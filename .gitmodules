@@ -1,0 +1,6 @@
+[submodule "external/lua"]
+	path = external/lua
+	url = https://github.com/walterschell/Lua.git
+[submodule "external/plugify"]
+	path = external/plugify
+	url = https://github.com/untrustedmodders/plugify.git

@@ -1,0 +1,4 @@
+generator/* linguist-vendored
+lib/** linguist-vendored
+
+*.pmodule.in text eol=lf linguist-language=JSON

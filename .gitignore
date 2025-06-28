@@ -1,0 +1,9 @@
+# IDEs
+.idea
+.vs
+
+# CMake
+CMakeUserPresets.json
+
+# Build results
+build/

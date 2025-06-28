@@ -1,0 +1,15 @@
+{
+	"fileVersion": 1,
+	"version": "1.0.0",
+	"versionName": "${LUALM_VERSION}",
+	"friendlyName": "Lua language module",
+	"language": "lua",
+	"description": "Adds support for TODO plugins",
+	"createdBy": "untrustedmodders",
+	"createdByURL": "https://github.com/untrustedmodders/",
+	"docsURL": "https://github.com/untrustedmodders/plugify-module-lua/README.md",
+	"downloadURL": "https://github.com/untrustedmodders/plugify-module-lua/releases/download/v${LUALM_VERSION}/${LUALM_PACKAGE}.zip",
+	"updateURL": "https://untrustedmodders.github.com/plugify-module-lua/plugify-module-lua.json",
+	"supportedPlatforms": [],
+	"forceLoad": false
+}
