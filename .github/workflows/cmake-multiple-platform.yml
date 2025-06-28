@@ -7,10 +7,16 @@ on:
     paths-ignore:
     - LICENSE
     - README.md
+    - 'docs/**'
+    - 'generator/**'
+    - 'test/**'
   pull_request:
     paths-ignore:
     - LICENSE
     - README.md
+    - 'docs/**'
+    - 'generator/**'
+    - 'test/**'
 
 env:
   BUILD_TYPE: Release
@@ -20,6 +26,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: write
       repository-projects: write
     runs-on: ubuntu-latest
     outputs:
