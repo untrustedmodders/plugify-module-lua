@@ -84,7 +84,7 @@ namespace lualm {
 		// ILanguageModule
 		plugify::InitResult Initialize(std::weak_ptr<plugify::IPlugifyProvider> provider, plugify::ModuleHandle module) override;
 		void Shutdown() override;
-		void OnUpdate(plugify::DateTime dt);
+		void OnUpdate(plugify::DateTime dt) override;
 		plugify::LoadResult OnPluginLoad(plugify::PluginHandle plugin) override;
 		void OnPluginStart(plugify::PluginHandle plugin) override;
 		void OnPluginUpdate(plugify::PluginHandle plugin, plugify::DateTime dt) override;
