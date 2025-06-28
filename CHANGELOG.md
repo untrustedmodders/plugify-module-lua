@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/untrustedmodders/plugify-module-lua/compare/v1.0.1...v1.0.2) (2025-06-28)
+
+
+### Bug Fixes
+
+* version in manifest ([95c9b3e](https://github.com/untrustedmodders/plugify-module-lua/commit/95c9b3e3ed0cafb820d15975388a9e1ef1b9ea41))
+
 ## [1.0.1](https://github.com/untrustedmodders/plugify-module-lua/compare/v1.0.0...v1.0.1) (2025-06-28)
 
 
