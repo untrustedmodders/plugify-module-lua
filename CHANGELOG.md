@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/untrustedmodders/plugify-module-lua/compare/v1.0.2...v1.0.3) (2025-08-01)
+
+
+### Bug Fixes
+
+* bump C++ to 23 ([0a657aa](https://github.com/untrustedmodders/plugify-module-lua/commit/0a657aa2aa418747abc0fad68ffd5c7a92fda6ce))
+
 ## [1.0.2](https://github.com/untrustedmodders/plugify-module-lua/compare/v1.0.1...v1.0.2) (2025-06-28)
 
 
