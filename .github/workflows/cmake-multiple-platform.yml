@@ -225,7 +225,7 @@ jobs:
                         "$schema": "https://raw.githubusercontent.com/untrustedmodders/plugify/refs/heads/main/schemas/package.schema.json",
                         "content": {
                             "plugify-module-lua": {
-                                "name": "plugify-plugin-lua",
+                                "name": "plugify-module-lua",
                                 "type": "lua",
                                 "author": "untrustedmodders",
                                 "description": "Adds support for Lua plugins",
