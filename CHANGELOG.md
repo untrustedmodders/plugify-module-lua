@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/untrustedmodders/plugify-module-lua/compare/v1.0.3...v1.0.4) (2025-08-05)
+
+
+### Bug Fixes
+
+* typo in language name ([a381d61](https://github.com/untrustedmodders/plugify-module-lua/commit/a381d61c7f7cdbc71f6cf8e2a42e17467e50c35e))
+
 ## [1.0.3](https://github.com/untrustedmodders/plugify-module-lua/compare/v1.0.2...v1.0.3) (2025-08-01)
 
 
