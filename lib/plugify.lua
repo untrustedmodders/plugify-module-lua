@@ -2,20 +2,24 @@ local Plugin = {}
 Plugin.__index = Plugin
 Plugin.__type = "Plugin"
 
-function Plugin:new(id, name, full_name, description, version, author, website, base_dir, configs_dir, data_dir, logs_dir, dependencies)
+function Plugin:new(id, name, description, version, author, website, license, location, dependencies, base_dir, extensions_dir, configs_dir, data_dir, logs_dir, cache_dir)
     local self = setmetatable({}, Plugin)
     self.id = id
 	self.name = name
-	self.full_name = full_name
 	self.description = description
 	self.version = version
 	self.author = author
 	self.website = website
+	self.license = license
+	self.location = location
+	self.dependencies = dependencies or {}
+
 	self.base_dir = base_dir
+	self.extensions_dir = extensions_dir
 	self.configs_dir = configs_dir
 	self.data_dir = data_dir
 	self.logs_dir = logs_dir
-	self.dependencies = dependencies or {}
+	self.cache_dir = cache_dir
     return self
 end
 

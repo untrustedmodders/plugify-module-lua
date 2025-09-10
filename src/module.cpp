@@ -2,22 +2,10 @@
 #include <bitset>
 #include <filesystem>
 #include <module_export.h>
-#include <plugify/compat_format.hpp>
-#include <plugify/log.hpp>
-#include <plugify/module.hpp>
-#include <plugify/plugify_provider.hpp>
-#include <plugify/plugin.hpp>
-#include <plugify/plugin_descriptor.hpp>
-#include <plugify/plugin_reference_descriptor.hpp>
-#include <plugify/string.hpp>
-#include <plugify/any.hpp>
 
-#if LUALM_PLATFORM_WINDOWS
-#ifndef NOMINMAX
-#define NOMINMAX 1
-#endif
-#include <windows.h>
-#endif
+#include <plg/string.hpp>
+#include <plg/any.hpp>
+#include <plg/format.hpp>
 
 #define LOG_PREFIX "[LUALM] "
 
@@ -180,28 +168,31 @@ namespace lualm {
 		}
 
 		namespace detail {
-			void InternalCall(MethodHandle method, MemAddr data, const JitCallback::Parameters* params, size_t count, const JitCallback::Return* ret) {
-				g_lualm.InternalCall(method, data, params, count, ret);
+			void InternalCall(const Method* method, MemAddr data, uint64_t* params, size_t count, void* ret) {
+				g_lualm.InternalCall(*method, data, params, count, ret);
 			}
 
-			void ExternalCall(MethodHandle method, MemAddr data, const JitCallback::Parameters* params, size_t count, const JitCallback::Return* ret) {
-				g_lualm.ExternalCall(method, data, params, count, ret);
+			void ExternalCall(const Method* method, MemAddr data, uint64_t* params, size_t count, void* ret) {
+				g_lualm.ExternalCall(*method, data, params, count, ret);
 			}
 		}
 
-		void LoadFile(MethodHandle, MemAddr data, const JitCallback::Parameters* p, size_t, const JitCallback::Return* ret) {
+		void LoadFile(const Method*, MemAddr data, uint64_t* parameters, size_t count, void* return_) {
+			ParametersSpan params(parameters, count);
+			ReturnSlot ret(return_, ValueUtils::SizeOf(ValueType::Int32));
+
 			// int (openf*)(lua_State* L)
-			const auto L = p->GetArgument<lua_State*>(0);
+			const auto L = params.Get<lua_State*>(0);
 			const auto* filename = data.RCast<const char*>();
 
 			if (luaL_dofile(L, filename) != LUA_OK) {
 				g_lualm.GetProvider()->Log(std::format(LOG_PREFIX "Failed to load module: {} - {}", filename, lua_tostring(L, -1)), Severity::Error);
 				lua_pop(L, 1);
-				ret->SetReturn<int>(0);
+				ret.Set<int>(0);
 				return;
 			}
 
-			ret->SetReturn<int>(1);
+			ret.Set<int>(1);
 		}
 
 		int LoadEmpty(lua_State* L) {
@@ -668,7 +659,7 @@ namespace lualm {
 				}
 				const int absIndex = lua_absindex(_L, arg);
 				std::bitset<MaxLuaTypes> flags;
-				for (lua_Integer i = 1; i <= len; ++i) {
+				for (lua_Integer i = 1; i <= static_cast<lua_Integer>(len); ++i) {
 					lua_rawgeti(_L, absIndex, i);
 					auto [valueType, _] = GetObjectType(-1);
 					if (valueType != LuaAbstractType::Invalid) {
@@ -733,7 +724,7 @@ namespace lualm {
 				}
 				std::string error("table should contains supported types, but contains: [");
 				bool first = true;
-				for (lua_Integer i = 1; i <= len; ++i) {
+				for (lua_Integer i = 1; i <= static_cast<lua_Integer>(len); ++i) {
 					lua_rawgeti(_L, absIndex, i);
 					auto [_, valueName] = GetObjectType(-1);
 					if (first) {
@@ -775,7 +766,7 @@ namespace lualm {
 
 		const int absIndex = lua_absindex(_L, arg);
 
-		for (lua_Integer i = 1; i <= len; ++i) {
+		for (lua_Integer i = 1; i <= static_cast<lua_Integer>(len); ++i) {
 			lua_rawgeti(_L, absIndex, i);
 			if (auto value = ValueFromObject<T>(-1)) {
 				array.emplace_back(std::move(*value));
@@ -907,59 +898,30 @@ namespace lualm {
 	}
 
 	template<>
+	bool LuaLanguageModule::PushLuaObject(const std::string& value) {
+		lua_pushlstring(_L, value.c_str(), value.size());
+		return true;
+	}
+
+	template<>
 	bool LuaLanguageModule::PushLuaObject(const std::string_view& value) {
 		lua_pushlstring(_L, value.data(), value.size());
 		return true;
 	}
 
-#if LUALM_PLATFORM_WINDOWS
-	namespace {
-		bool ConvertUtf8ToWide(std::wstring& dest, std::string_view str) {
-			int wlen = MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.length()), nullptr, 0);
-			if (wlen < 0)
-				return false;
-
-			dest.resize(static_cast<size_t>(wlen));
-			if (wlen > 0 && MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.length()), dest.data(), wlen) < 0)
-				return false;
-
-			return true;
-		}
-
-		std::wstring ConvertUtf8ToWide(std::string_view str){
-			std::wstring ret;
-			if (!ConvertUtf8ToWide(ret, str))
-				return {};
-			return ret;
-		}
-
-		bool ConvertWideToUtf8(std::string& dest, std::wstring_view str) {
-			int mblen = WideCharToMultiByte(CP_UTF8, 0, str.data(), static_cast<int>(str.length()), nullptr, 0, nullptr, nullptr);
-			if (mblen < 0)
-				return false;
-
-			dest.resize(static_cast<size_t>(mblen));
-			if (mblen > 0 && WideCharToMultiByte(CP_UTF8, 0, str.data(), static_cast<int>(str.length()), dest.data(), mblen, nullptr, nullptr) < 0)
-				return false;
-
-			return true;
-		}
-
-		std::string ConvertWideToUtf8(std::wstring_view str) {
-			std::string ret;
-			if (!ConvertWideToUtf8(ret, str))
-				return {};
-			return ret;
-		}
-	}
-
-	template<>
-	bool LuaLanguageModule::PushLuaObject(const std::wstring_view& value) {
+	/*template<>
+		bool LuaLanguageModule::PushLuaObject(const std::wstring_view& value) {
 		std::string str = ConvertWideToUtf8(value);
 		lua_pushlstring(_L, str.data(), str.size());
 		return true;
+	}*/
+
+	template<>
+	bool LuaLanguageModule::PushLuaObject(const std::filesystem::path& value) {
+		const std::string& str = plg::as_string(value);
+		lua_pushlstring(_L, str.data(), str.size());
+		return true;
 	}
-#endif
 
 	template<>
 	bool LuaLanguageModule::PushLuaObject(const plg::vec2& value) {
@@ -1041,7 +1003,7 @@ namespace lualm {
 		return false;
 	}
 
-	std::optional<void*> LuaLanguageModule::GetOrCreateFunctionValue(MethodHandle method, int arg) {
+	std::optional<void*> LuaLanguageModule::GetOrCreateFunctionValue(const Method& method, int arg) {
 		if (lua_isnil(_L, arg)) {
 			return nullptr;
 		}
@@ -1060,7 +1022,7 @@ namespace lualm {
 			return funcAddr;
 		}
 
-		JitCallback callback(_jitRuntime);
+		JitCallback callback{};
 		const MemAddr methodAddr = callback.GetJitFunc(method, &detail::InternalCall, funcObj.get());
 		if (!methodAddr) {
 			luaL_error(_L, "Lang module JIT failed to generate C++ wrapper from callback object '%s'", callback.GetError().data());
@@ -1073,13 +1035,14 @@ namespace lualm {
 		return methodAddr;
 	}
 
-	bool LuaLanguageModule::PushOrCreateFunctionObject(MethodHandle method, void* funcAddr) {
+	bool LuaLanguageModule::PushOrCreateFunctionObject(const Method& method, void* funcAddr) {
 		auto [_, methodRef] = FindExternal(funcAddr);
 		if (methodRef != LUA_NOREF) {
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, methodRef);
 			return true;
 		}
-		JitCall call(_jitRuntime);
+
+		JitCall call{};
 
 		const MemAddr callAddr = call.GetJitFunc(method, funcAddr);
 		if (!callAddr) {
@@ -1087,13 +1050,13 @@ namespace lualm {
 			return false;
 		}
 
-		JitCallback callback(_jitRuntime);
+		JitCallback callback{};
 
-		asmjit::FuncSignature sig(asmjit::CallConvId::kCDecl);
-		sig.addArg(asmjit::TypeId::kUIntPtr);
-		sig.setRet(asmjit::TypeId::kInt32);
+		Signature sig{};
+		sig.AddArg(ValueType::Pointer);
+		sig.SetRet(ValueType::Int32);
 
-		const MemAddr methodAddr = callback.GetJitFunc(sig, method, &detail::ExternalCall, callAddr, false);
+		const MemAddr methodAddr = callback.GetJitFunc(sig, &method, &detail::ExternalCall, callAddr, false);
 		if (!methodAddr) {
 			luaL_error(_L, "Lang module JIT failed to generate c++ lua_CFunction wrapper '%s'", callback.GetError().data());
 			return false;
@@ -1158,7 +1121,7 @@ namespace lualm {
 
 #pragma region InternalCall
 
-	void LuaLanguageModule::SetFallbackReturn(ValueType retType, const JitCallback::Return* ret) {
+	void LuaLanguageModule::SetFallbackReturn(ValueType retType, ReturnSlot& ret) {
 		switch (retType) {
 			case ValueType::Void:
 			case ValueType::Bool:
@@ -1176,88 +1139,88 @@ namespace lualm {
 			case ValueType::Float:
 			case ValueType::Double:
 				// HACK: Fill all 8 byte with 0
-				ret->SetReturn<uintptr_t>({});
+				ret.Set<uintptr_t>({});
 				break;
 			case ValueType::Function:
-				ret->SetReturn<void*>(nullptr);
+				ret.Set<void*>(nullptr);
 				break;
 			case ValueType::String:
-				ret->ConstructAt<plg::string>();
+				ret.Construct<plg::string>();
 				break;
 			case ValueType::Any:
-				ret->ConstructAt<plg::any>();
+				ret.Construct<plg::any>();
 				break;
 			case ValueType::ArrayBool:
-				ret->ConstructAt<plg::vector<bool>>();
+				ret.Construct<plg::vector<bool>>();
 				break;
 			case ValueType::ArrayChar8:
-				ret->ConstructAt<plg::vector<char>>();
+				ret.Construct<plg::vector<char>>();
 				break;
 			case ValueType::ArrayChar16:
-				ret->ConstructAt<plg::vector<char16_t>>();
+				ret.Construct<plg::vector<char16_t>>();
 				break;
 			case ValueType::ArrayInt8:
-				ret->ConstructAt<plg::vector<int8_t>>();
+				ret.Construct<plg::vector<int8_t>>();
 				break;
 			case ValueType::ArrayInt16:
-				ret->ConstructAt<plg::vector<int16_t>>();
+				ret.Construct<plg::vector<int16_t>>();
 				break;
 			case ValueType::ArrayInt32:
-				ret->ConstructAt<plg::vector<int32_t>>();
+				ret.Construct<plg::vector<int32_t>>();
 				break;
 			case ValueType::ArrayInt64:
-				ret->ConstructAt<plg::vector<int64_t>>();
+				ret.Construct<plg::vector<int64_t>>();
 				break;
 			case ValueType::ArrayUInt8:
-				ret->ConstructAt<plg::vector<uint8_t>>();
+				ret.Construct<plg::vector<uint8_t>>();
 				break;
 			case ValueType::ArrayUInt16:
-				ret->ConstructAt<plg::vector<uint16_t>>();
+				ret.Construct<plg::vector<uint16_t>>();
 				break;
 			case ValueType::ArrayUInt32:
-				ret->ConstructAt<plg::vector<uint32_t>>();
+				ret.Construct<plg::vector<uint32_t>>();
 				break;
 			case ValueType::ArrayUInt64:
-				ret->ConstructAt<plg::vector<uint64_t>>();
+				ret.Construct<plg::vector<uint64_t>>();
 				break;
 			case ValueType::ArrayPointer:
-				ret->ConstructAt<plg::vector<void*>>();
+				ret.Construct<plg::vector<void*>>();
 				break;
 			case ValueType::ArrayFloat:
-				ret->ConstructAt<plg::vector<float>>();
+				ret.Construct<plg::vector<float>>();
 				break;
 			case ValueType::ArrayDouble:
-				ret->ConstructAt<plg::vector<double>>();
+				ret.Construct<plg::vector<double>>();
 				break;
 			case ValueType::ArrayString:
-				ret->ConstructAt<plg::vector<plg::string>>();
+				ret.Construct<plg::vector<plg::string>>();
 				break;
 			case ValueType::ArrayAny:
-				ret->ConstructAt<plg::vector<plg::any>>();
+				ret.Construct<plg::vector<plg::any>>();
 				break;
 			case ValueType::ArrayVector2:
-				ret->ConstructAt<plg::vector<plg::vec2>>();
+				ret.Construct<plg::vector<plg::vec2>>();
 				break;
 			case ValueType::ArrayVector3:
-				ret->ConstructAt<plg::vector<plg::vec3>>();
+				ret.Construct<plg::vector<plg::vec3>>();
 				break;
 			case ValueType::ArrayVector4:
-				ret->ConstructAt<plg::vector<plg::vec4>>();
+				ret.Construct<plg::vector<plg::vec4>>();
 				break;
 			case ValueType::ArrayMatrix4x4:
-				ret->ConstructAt<plg::vector<plg::mat4x4>>();
+				ret.Construct<plg::vector<plg::mat4x4>>();
 				break;
 			case ValueType::Vector2:
-				ret->SetReturn<plg::vec2>({});
+				ret.Set<plg::vec2>({});
 				break;
 			case ValueType::Vector3:
-				ret->SetReturn<plg::vec3>({});
+				ret.Set<plg::vec3>({});
 				break;
 			case ValueType::Vector4:
-				ret->SetReturn<plg::vec4>({});
+				ret.Set<plg::vec4>({});
 				break;
 			case ValueType::Matrix4x4:
-				ret->SetReturn<plg::mat4x4>({});
+				ret.Set<plg::mat4x4>({});
 				break;
 			default: {
 				_provider->Log(std::format(LOG_PREFIX "SetFallbackReturn unsupported type {:#x}", static_cast<uint8_t>(retType)), Severity::Fatal);
@@ -1267,253 +1230,253 @@ namespace lualm {
 		}
 	}
 
-	bool LuaLanguageModule::SetReturn(int arg, PropertyHandle retType, const JitCallback::Return* ret) {
+	bool LuaLanguageModule::SetReturn(int arg, const Property& retType, ReturnSlot& ret) {
 		switch (retType.GetType()) {
 			case ValueType::Void:
 				return true;
 			case ValueType::Bool:
 				if (auto value = ValueFromObject<bool>(arg)) {
-					ret->SetReturn<bool>(*value);
+					ret.Set<bool>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Char8:
 				if (auto value = ValueFromObject<char>(arg)) {
-					ret->SetReturn<char>(*value);
+					ret.Set<char>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Char16:
 				if (auto value = ValueFromObject<char16_t>(arg)) {
-					ret->SetReturn<char16_t>(*value);
+					ret.Set<char16_t>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Int8:
 				if (auto value = ValueFromObject<int8_t>(arg)) {
-					ret->SetReturn<int8_t>(*value);
+					ret.Set<int8_t>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Int16:
 				if (auto value = ValueFromObject<int16_t>(arg)) {
-					ret->SetReturn<int16_t>(*value);
+					ret.Set<int16_t>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Int32:
 				if (auto value = ValueFromObject<int32_t>(arg)) {
-					ret->SetReturn<int32_t>(*value);
+					ret.Set<int32_t>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Int64:
 				if (auto value = ValueFromObject<int64_t>(arg)) {
-					ret->SetReturn<int64_t>(*value);
+					ret.Set<int64_t>(*value);
 					return true;
 				}
 				break;
 			case ValueType::UInt8:
 				if (auto value = ValueFromObject<uint8_t>(arg)) {
-					ret->SetReturn<uint8_t>(*value);
+					ret.Set<uint8_t>(*value);
 					return true;
 				}
 				break;
 			case ValueType::UInt16:
 				if (auto value = ValueFromObject<uint16_t>(arg)) {
-					ret->SetReturn<uint16_t>(*value);
+					ret.Set<uint16_t>(*value);
 					return true;
 				}
 				break;
 			case ValueType::UInt32:
 				if (auto value = ValueFromObject<uint32_t>(arg)) {
-					ret->SetReturn<uint32_t>(*value);
+					ret.Set<uint32_t>(*value);
 					return true;
 				}
 				break;
 			case ValueType::UInt64:
 				if (auto value = ValueFromObject<uint64_t>(arg)) {
-					ret->SetReturn<uint64_t>(*value);
+					ret.Set<uint64_t>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Pointer:
 				if (auto value = ValueFromObject<void*>(arg)) {
-					ret->SetReturn<void*>(*value);
+					ret.Set<void*>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Float:
 				if (auto value = ValueFromObject<float>(arg)) {
-					ret->SetReturn<float>(*value);
+					ret.Set<float>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Double:
 				if (auto value = ValueFromObject<double>(arg)) {
-					ret->SetReturn<double>(*value);
+					ret.Set<double>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Function:
-				if (auto value = GetOrCreateFunctionValue(retType.GetPrototype(), arg)) {
-					ret->SetReturn<void*>(*value);
+				if (auto value = GetOrCreateFunctionValue(*retType.GetPrototype(), arg)) {
+					ret.Set<void*>(*value);
 					return true;
 				}
 				break;
 			case ValueType::String:
 				if (auto value = ValueFromObject<plg::string>(arg)) {
-					ret->ConstructAt<plg::string>(std::move(*value));
+					ret.Construct<plg::string>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::Any:
 				if (auto value = ValueFromObject<plg::any>(arg)) {
-					ret->ConstructAt<plg::any>(std::move(*value));
+					ret.Construct<plg::any>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayBool:
 				if (auto value = ArrayFromObject<bool>(arg)) {
-					ret->ConstructAt<plg::vector<bool>>(std::move(*value));
+					ret.Construct<plg::vector<bool>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayChar8:
 				if (auto value = ArrayFromObject<char>(arg)) {
-					ret->ConstructAt<plg::vector<char>>(std::move(*value));
+					ret.Construct<plg::vector<char>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayChar16:
 				if (auto value = ArrayFromObject<char16_t>(arg)) {
-					ret->ConstructAt<plg::vector<char16_t>>(std::move(*value));
+					ret.Construct<plg::vector<char16_t>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayInt8:
 				if (auto value = ArrayFromObject<int8_t>(arg)) {
-					ret->ConstructAt<plg::vector<int8_t>>(std::move(*value));
+					ret.Construct<plg::vector<int8_t>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayInt16:
 				if (auto value = ArrayFromObject<int16_t>(arg)) {
-					ret->ConstructAt<plg::vector<int16_t>>(std::move(*value));
+					ret.Construct<plg::vector<int16_t>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayInt32:
 				if (auto value = ArrayFromObject<int32_t>(arg)) {
-					ret->ConstructAt<plg::vector<int32_t>>(std::move(*value));
+					ret.Construct<plg::vector<int32_t>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayInt64:
 				if (auto value = ArrayFromObject<int64_t>(arg)) {
-					ret->ConstructAt<plg::vector<int64_t>>(std::move(*value));
+					ret.Construct<plg::vector<int64_t>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayUInt8:
 				if (auto value = ArrayFromObject<uint8_t>(arg)) {
-					ret->ConstructAt<plg::vector<uint8_t>>(std::move(*value));
+					ret.Construct<plg::vector<uint8_t>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayUInt16:
 				if (auto value = ArrayFromObject<uint16_t>(arg)) {
-					ret->ConstructAt<plg::vector<uint16_t>>(std::move(*value));
+					ret.Construct<plg::vector<uint16_t>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayUInt32:
 				if (auto value = ArrayFromObject<uint32_t>(arg)) {
-					ret->ConstructAt<plg::vector<uint32_t>>(std::move(*value));
+					ret.Construct<plg::vector<uint32_t>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayUInt64:
 				if (auto value = ArrayFromObject<uint64_t>(arg)) {
-					ret->ConstructAt<plg::vector<uint64_t>>(std::move(*value));
+					ret.Construct<plg::vector<uint64_t>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayPointer:
 				if (auto value = ArrayFromObject<void*>(arg)) {
-					ret->ConstructAt<plg::vector<void*>>(std::move(*value));
+					ret.Construct<plg::vector<void*>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayFloat:
 				if (auto value = ArrayFromObject<float>(arg)) {
-					ret->ConstructAt<plg::vector<float>>(std::move(*value));
+					ret.Construct<plg::vector<float>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayDouble:
 				if (auto value = ArrayFromObject<double>(arg)) {
-					ret->ConstructAt<plg::vector<double>>(std::move(*value));
+					ret.Construct<plg::vector<double>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayString:
 				if (auto value = ArrayFromObject<plg::string>(arg)) {
-					ret->ConstructAt<plg::vector<plg::string>>(std::move(*value));
+					ret.Construct<plg::vector<plg::string>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayAny:
 				if (auto value = ArrayFromObject<plg::any>(arg)) {
-					ret->ConstructAt<plg::vector<plg::any>>(std::move(*value));
+					ret.Construct<plg::vector<plg::any>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayVector2:
 				if (auto value = ArrayFromObject<plg::vec2>(arg)) {
-					ret->ConstructAt<plg::vector<plg::vec2>>(std::move(*value));
+					ret.Construct<plg::vector<plg::vec2>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayVector3:
 				if (auto value = ArrayFromObject<plg::vec3>(arg)) {
-					ret->ConstructAt<plg::vector<plg::vec3>>(std::move(*value));
+					ret.Construct<plg::vector<plg::vec3>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayVector4:
 				if (auto value = ArrayFromObject<plg::vec4>(arg)) {
-					ret->ConstructAt<plg::vector<plg::vec4>>(std::move(*value));
+					ret.Construct<plg::vector<plg::vec4>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::ArrayMatrix4x4:
 				if (auto value = ArrayFromObject<plg::mat4x4>(arg)) {
-					ret->ConstructAt<plg::vector<plg::mat4x4>>(std::move(*value));
+					ret.Construct<plg::vector<plg::mat4x4>>(std::move(*value));
 					return true;
 				}
 				break;
 			case ValueType::Vector2:
 				if (auto value = ValueFromObject<plg::vec2>(arg)) {
-					ret->SetReturn<plg::vec2>(*value);
+					ret.Set<plg::vec2>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Vector3:
 				if (auto value = ValueFromObject<plg::vec3>(arg)) {
-					ret->SetReturn<plg::vec3>(*value);
+					ret.Set<plg::vec3>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Vector4:
 				if (auto value = ValueFromObject<plg::vec4>(arg)) {
-					ret->SetReturn<plg::vec4>(*value);
+					ret.Set<plg::vec4>(*value);
 					return true;
 				}
 				break;
 			case ValueType::Matrix4x4:
 				if (auto value = ValueFromObject<plg::mat4x4>(arg)) {
-					ret->SetReturn<plg::mat4x4>(*value);
+					ret.Set<plg::mat4x4>(*value);
 					return true;
 				}
 				break;
@@ -1527,284 +1490,284 @@ namespace lualm {
 		return false;
 	}
 
-	bool LuaLanguageModule::SetRefParam(int arg, PropertyHandle paramType, const JitCallback::Parameters* params, size_t index) {
+	bool LuaLanguageModule::SetRefParam(int arg, const Property& paramType, ParametersSpan& params, size_t index) {
 		switch (paramType.GetType()) {
 			case ValueType::Bool:
 				if (auto value = ValueFromObject<bool>(arg)) {
-					auto* const param = params->GetArgument<bool*>(index);
+					auto* const param = params.Get<bool*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Char8:
 				if (auto value = ValueFromObject<char>(arg)) {
-					auto* const param = params->GetArgument<char*>(index);
+					auto* const param = params.Get<char*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Char16:
 				if (auto value = ValueFromObject<char16_t>(arg)) {
-					auto* const param = params->GetArgument<char16_t*>(index);
+					auto* const param = params.Get<char16_t*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Int8:
 				if (auto value = ValueFromObject<int8_t>(arg)) {
-					auto* const param = params->GetArgument<int8_t*>(index);
+					auto* const param = params.Get<int8_t*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Int16:
 				if (auto value = ValueFromObject<int16_t>(arg)) {
-					auto* const param = params->GetArgument<int16_t*>(index);
+					auto* const param = params.Get<int16_t*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Int32:
 				if (auto value = ValueFromObject<int32_t>(arg)) {
-					auto* const param = params->GetArgument<int32_t*>(index);
+					auto* const param = params.Get<int32_t*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Int64:
 				if (auto value = ValueFromObject<int64_t>(arg)) {
-					auto* const param = params->GetArgument<int64_t*>(index);
+					auto* const param = params.Get<int64_t*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::UInt8:
 				if (auto value = ValueFromObject<uint8_t>(arg)) {
-					auto* const param = params->GetArgument<uint8_t*>(index);
+					auto* const param = params.Get<uint8_t*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::UInt16:
 				if (auto value = ValueFromObject<uint16_t>(arg)) {
-					auto* const param = params->GetArgument<uint16_t*>(index);
+					auto* const param = params.Get<uint16_t*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::UInt32:
 				if (auto value = ValueFromObject<uint32_t>(arg)) {
-					auto* const param = params->GetArgument<uint32_t*>(index);
+					auto* const param = params.Get<uint32_t*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::UInt64:
 				if (auto value = ValueFromObject<uint64_t>(arg)) {
-					auto* const param = params->GetArgument<uint64_t*>(index);
+					auto* const param = params.Get<uint64_t*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Pointer:
 				if (auto value = ValueFromObject<void*>(arg)) {
-					auto* const param = params->GetArgument<void**>(index);
+					auto* const param = params.Get<void**>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Float:
 				if (auto value = ValueFromObject<float>(arg)) {
-					auto* const param = params->GetArgument<float*>(index);
+					auto* const param = params.Get<float*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Double:
 				if (auto value = ValueFromObject<double>(arg)) {
-					auto* const param = params->GetArgument<double*>(index);
+					auto* const param = params.Get<double*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::String:
 				if (auto value = ValueFromObject<plg::string>(arg)) {
-					auto* const param = params->GetArgument<plg::string*>(index);
+					auto* const param = params.Get<plg::string*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::Any:
 				if (auto value = ValueFromObject<plg::any>(arg)) {
-					auto* const param = params->GetArgument<plg::any*>(index);
+					auto* const param = params.Get<plg::any*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayBool:
 				if (auto value = ArrayFromObject<bool>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<bool>*>(index);
+					auto* const param = params.Get<plg::vector<bool>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayChar8:
 				if (auto value = ArrayFromObject<char>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<char>*>(index);
+					auto* const param = params.Get<plg::vector<char>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayChar16:
 				if (auto value = ArrayFromObject<char16_t>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<char16_t>*>(index);
+					auto* const param = params.Get<plg::vector<char16_t>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayInt8:
 				if (auto value = ArrayFromObject<int8_t>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<int8_t>*>(index);
+					auto* const param = params.Get<plg::vector<int8_t>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayInt16:
 				if (auto value = ArrayFromObject<int16_t>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<int16_t>*>(index);
+					auto* const param = params.Get<plg::vector<int16_t>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayInt32:
 				if (auto value = ArrayFromObject<int32_t>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<int32_t>*>(index);
+					auto* const param = params.Get<plg::vector<int32_t>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayInt64:
 				if (auto value = ArrayFromObject<int64_t>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<int64_t>*>(index);
+					auto* const param = params.Get<plg::vector<int64_t>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayUInt8:
 				if (auto value = ArrayFromObject<uint8_t>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<uint8_t>*>(index);
+					auto* const param = params.Get<plg::vector<uint8_t>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayUInt16:
 				if (auto value = ArrayFromObject<uint16_t>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<uint16_t>*>(index);
+					auto* const param = params.Get<plg::vector<uint16_t>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayUInt32:
 				if (auto value = ArrayFromObject<uint32_t>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<uint32_t>*>(index);
+					auto* const param = params.Get<plg::vector<uint32_t>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayUInt64:
 				if (auto value = ArrayFromObject<uint64_t>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<uint64_t>*>(index);
+					auto* const param = params.Get<plg::vector<uint64_t>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayPointer:
 				if (auto value = ArrayFromObject<void*>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<void*>*>(index);
+					auto* const param = params.Get<plg::vector<void*>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayFloat:
 				if (auto value = ArrayFromObject<float>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<float>*>(index);
+					auto* const param = params.Get<plg::vector<float>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayDouble:
 				if (auto value = ArrayFromObject<double>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<double>*>(index);
+					auto* const param = params.Get<plg::vector<double>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayString:
 				if (auto value = ArrayFromObject<plg::string>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<plg::string>*>(index);
+					auto* const param = params.Get<plg::vector<plg::string>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayAny:
 				if (auto value = ArrayFromObject<plg::any>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<plg::any>*>(index);
+					auto* const param = params.Get<plg::vector<plg::any>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayVector2:
 				if (auto value = ArrayFromObject<plg::vec2>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<plg::vec2>*>(index);
+					auto* const param = params.Get<plg::vector<plg::vec2>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayVector3:
 				if (auto value = ArrayFromObject<plg::vec3>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<plg::vec3>*>(index);
+					auto* const param = params.Get<plg::vector<plg::vec3>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayVector4:
 				if (auto value = ArrayFromObject<plg::vec4>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<plg::vec4>*>(index);
+					auto* const param = params.Get<plg::vector<plg::vec4>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::ArrayMatrix4x4:
 				if (auto value = ArrayFromObject<plg::mat4x4>(arg)) {
-					auto* const param = params->GetArgument<plg::vector<plg::mat4x4>*>(index);
+					auto* const param = params.Get<plg::vector<plg::mat4x4>*>(index);
 					*param = std::move(*value);
 					return true;
 				}
 				break;
 			case ValueType::Vector2:
 				if (auto value = ValueFromObject<plg::vec2>(arg)) {
-					auto* const param = params->GetArgument<plg::vec2*>(index);
+					auto* const param = params.Get<plg::vec2*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Vector3:
 				if (auto value = ValueFromObject<plg::vec3>(arg)) {
-					auto* const param = params->GetArgument<plg::vec3*>(index);
+					auto* const param = params.Get<plg::vec3*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Vector4:
 				if (auto value = ValueFromObject<plg::vec4>(arg)) {
-					auto* const param = params->GetArgument<plg::vec4*>(index);
+					auto* const param = params.Get<plg::vec4*>(index);
 					*param = *value;
 					return true;
 				}
 				break;
 			case ValueType::Matrix4x4:
 				if (auto value = ValueFromObject<plg::mat4x4>(arg)) {
-					auto* const param = params->GetArgument<plg::mat4x4*>(index);
+					auto* const param = params.Get<plg::mat4x4*>(index);
 					*param = *value;
 					return true;
 				}
@@ -1819,90 +1782,90 @@ namespace lualm {
 		return false;
 	}
 
-	bool LuaLanguageModule::ParamToObject(PropertyHandle paramType, const JitCallback::Parameters* params, size_t index) {
+	bool LuaLanguageModule::ParamToObject(const Property& paramType, ParametersSpan& params, size_t index) {
 		switch (paramType.GetType()) {
 			case ValueType::Bool:
-				return PushLuaObject(params->GetArgument<bool>(index));
+				return PushLuaObject(params.Get<bool>(index));
 			case ValueType::Char8:
-				return PushLuaObject(params->GetArgument<char>(index));
+				return PushLuaObject(params.Get<char>(index));
 			case ValueType::Char16:
-				return PushLuaObject(params->GetArgument<char16_t>(index));
+				return PushLuaObject(params.Get<char16_t>(index));
 			case ValueType::Int8:
-				return PushLuaObject(params->GetArgument<int8_t>(index));
+				return PushLuaObject(params.Get<int8_t>(index));
 			case ValueType::Int16:
-				return PushLuaObject(params->GetArgument<int16_t>(index));
+				return PushLuaObject(params.Get<int16_t>(index));
 			case ValueType::Int32:
-				return PushLuaObject(params->GetArgument<int32_t>(index));
+				return PushLuaObject(params.Get<int32_t>(index));
 			case ValueType::Int64:
-				return PushLuaObject(params->GetArgument<int64_t>(index));
+				return PushLuaObject(params.Get<int64_t>(index));
 			case ValueType::UInt8:
-				return PushLuaObject(params->GetArgument<uint8_t>(index));
+				return PushLuaObject(params.Get<uint8_t>(index));
 			case ValueType::UInt16:
-				return PushLuaObject(params->GetArgument<uint16_t>(index));
+				return PushLuaObject(params.Get<uint16_t>(index));
 			case ValueType::UInt32:
-				return PushLuaObject(params->GetArgument<uint32_t>(index));
+				return PushLuaObject(params.Get<uint32_t>(index));
 			case ValueType::UInt64:
-				return PushLuaObject(params->GetArgument<uint64_t>(index));
+				return PushLuaObject(params.Get<uint64_t>(index));
 			case ValueType::Pointer:
-				return PushLuaObject(params->GetArgument<void*>(index));
+				return PushLuaObject(params.Get<void*>(index));
 			case ValueType::Float:
-				return PushLuaObject(params->GetArgument<float>(index));
+				return PushLuaObject(params.Get<float>(index));
 			case ValueType::Double:
-				return PushLuaObject(params->GetArgument<double>(index));
+				return PushLuaObject(params.Get<double>(index));
 			case ValueType::Function:
-				return PushOrCreateFunctionObject(paramType.GetPrototype(), params->GetArgument<void*>(index));
+				return PushOrCreateFunctionObject(*paramType.GetPrototype(), params.Get<void*>(index));
 			case ValueType::String:
-				return PushLuaObject(*(params->GetArgument<const plg::string*>(index)));
+				return PushLuaObject(*(params.Get<const plg::string*>(index)));
 			case ValueType::Any:
-				return PushLuaObject(*(params->GetArgument<const plg::any*>(index)));
+				return PushLuaObject(*(params.Get<const plg::any*>(index)));
 			case ValueType::ArrayBool:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<bool>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<bool>*>(index)));
 			case ValueType::ArrayChar8:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<char>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<char>*>(index)));
 			case ValueType::ArrayChar16:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<char16_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<char16_t>*>(index)));
 			case ValueType::ArrayInt8:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<int8_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<int8_t>*>(index)));
 			case ValueType::ArrayInt16:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<int16_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<int16_t>*>(index)));
 			case ValueType::ArrayInt32:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<int32_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<int32_t>*>(index)));
 			case ValueType::ArrayInt64:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<int64_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<int64_t>*>(index)));
 			case ValueType::ArrayUInt8:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<uint8_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<uint8_t>*>(index)));
 			case ValueType::ArrayUInt16:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<uint16_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<uint16_t>*>(index)));
 			case ValueType::ArrayUInt32:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<uint32_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<uint32_t>*>(index)));
 			case ValueType::ArrayUInt64:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<uint64_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<uint64_t>*>(index)));
 			case ValueType::ArrayPointer:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<void*>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<void*>*>(index)));
 			case ValueType::ArrayFloat:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<float>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<float>*>(index)));
 			case ValueType::ArrayDouble:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<double>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<double>*>(index)));
 			case ValueType::ArrayString:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::string>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::string>*>(index)));
 			case ValueType::ArrayAny:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::any>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::any>*>(index)));
 			case ValueType::ArrayVector2:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::vec2>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::vec2>*>(index)));
 			case ValueType::ArrayVector3:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::vec3>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::vec3>*>(index)));
 			case ValueType::ArrayVector4:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::vec4>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::vec4>*>(index)));
 			case ValueType::ArrayMatrix4x4:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::mat4x4>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::mat4x4>*>(index)));
 			case ValueType::Vector2:
-				return PushLuaObject(*(params->GetArgument<plg::vec2*>(index)));
+				return PushLuaObject(*(params.Get<plg::vec2*>(index)));
 			case ValueType::Vector3:
-				return PushLuaObject(*(params->GetArgument<plg::vec3*>(index)));
+				return PushLuaObject(*(params.Get<plg::vec3*>(index)));
 			case ValueType::Vector4:
-				return PushLuaObject(*(params->GetArgument<plg::vec4*>(index)));
+				return PushLuaObject(*(params.Get<plg::vec4*>(index)));
 			case ValueType::Matrix4x4:
-				return PushLuaObject(*(params->GetArgument<plg::mat4x4*>(index)));
+				return PushLuaObject(*(params.Get<plg::mat4x4*>(index)));
 			default: {
 				_provider->Log(std::format(LOG_PREFIX "ParamToObject unsupported type {:#x}", static_cast<uint8_t>(paramType.GetType())), Severity::Fatal);
 				std::terminate();
@@ -1911,88 +1874,88 @@ namespace lualm {
 		}
 	}
 
-	bool LuaLanguageModule::ParamRefToObject(PropertyHandle paramType, const JitCallback::Parameters* params, size_t index) {
+	bool LuaLanguageModule::ParamRefToObject(const Property& paramType, ParametersSpan& params, size_t index) {
 		switch (paramType.GetType()) {
 			case ValueType::Bool:
-				return PushLuaObject(*(params->GetArgument<bool*>(index)));
+				return PushLuaObject(*(params.Get<bool*>(index)));
 			case ValueType::Char8:
-				return PushLuaObject(*(params->GetArgument<char*>(index)));
+				return PushLuaObject(*(params.Get<char*>(index)));
 			case ValueType::Char16:
-				return PushLuaObject(*(params->GetArgument<char16_t*>(index)));
+				return PushLuaObject(*(params.Get<char16_t*>(index)));
 			case ValueType::Int8:
-				return PushLuaObject(*(params->GetArgument<int8_t*>(index)));
+				return PushLuaObject(*(params.Get<int8_t*>(index)));
 			case ValueType::Int16:
-				return PushLuaObject(*(params->GetArgument<int16_t*>(index)));
+				return PushLuaObject(*(params.Get<int16_t*>(index)));
 			case ValueType::Int32:
-				return PushLuaObject(*(params->GetArgument<int32_t*>(index)));
+				return PushLuaObject(*(params.Get<int32_t*>(index)));
 			case ValueType::Int64:
-				return PushLuaObject(*(params->GetArgument<int64_t*>(index)));
+				return PushLuaObject(*(params.Get<int64_t*>(index)));
 			case ValueType::UInt8:
-				return PushLuaObject(*(params->GetArgument<uint8_t*>(index)));
+				return PushLuaObject(*(params.Get<uint8_t*>(index)));
 			case ValueType::UInt16:
-				return PushLuaObject(*(params->GetArgument<uint16_t*>(index)));
+				return PushLuaObject(*(params.Get<uint16_t*>(index)));
 			case ValueType::UInt32:
-				return PushLuaObject(*(params->GetArgument<uint32_t*>(index)));
+				return PushLuaObject(*(params.Get<uint32_t*>(index)));
 			case ValueType::UInt64:
-				return PushLuaObject(*(params->GetArgument<uint64_t*>(index)));
+				return PushLuaObject(*(params.Get<uint64_t*>(index)));
 			case ValueType::Pointer:
-				return PushLuaObject(*(params->GetArgument<void**>(index)));
+				return PushLuaObject(*(params.Get<void**>(index)));
 			case ValueType::Float:
-				return PushLuaObject(*(params->GetArgument<float*>(index)));
+				return PushLuaObject(*(params.Get<float*>(index)));
 			case ValueType::Double:
-				return PushLuaObject(*(params->GetArgument<double*>(index)));
+				return PushLuaObject(*(params.Get<double*>(index)));
 			case ValueType::String:
-				return PushLuaObject(*(params->GetArgument<const plg::string*>(index)));
+				return PushLuaObject(*(params.Get<const plg::string*>(index)));
 			case ValueType::Any:
-				return PushLuaObject(*(params->GetArgument<const plg::any*>(index)));
+				return PushLuaObject(*(params.Get<const plg::any*>(index)));
 			case ValueType::ArrayBool:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<bool>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<bool>*>(index)));
 			case ValueType::ArrayChar8:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<char>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<char>*>(index)));
 			case ValueType::ArrayChar16:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<char16_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<char16_t>*>(index)));
 			case ValueType::ArrayInt8:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<int8_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<int8_t>*>(index)));
 			case ValueType::ArrayInt16:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<int16_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<int16_t>*>(index)));
 			case ValueType::ArrayInt32:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<int32_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<int32_t>*>(index)));
 			case ValueType::ArrayInt64:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<int64_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<int64_t>*>(index)));
 			case ValueType::ArrayUInt8:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<uint8_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<uint8_t>*>(index)));
 			case ValueType::ArrayUInt16:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<uint16_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<uint16_t>*>(index)));
 			case ValueType::ArrayUInt32:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<uint32_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<uint32_t>*>(index)));
 			case ValueType::ArrayUInt64:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<uint64_t>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<uint64_t>*>(index)));
 			case ValueType::ArrayPointer:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<void*>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<void*>*>(index)));
 			case ValueType::ArrayFloat:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<float>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<float>*>(index)));
 			case ValueType::ArrayDouble:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<double>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<double>*>(index)));
 			case ValueType::ArrayString:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::string>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::string>*>(index)));
 			case ValueType::ArrayAny:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::any>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::any>*>(index)));
 			case ValueType::ArrayVector2:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::vec2>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::vec2>*>(index)));
 			case ValueType::ArrayVector3:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::vec3>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::vec3>*>(index)));
 			case ValueType::ArrayVector4:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::vec4>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::vec4>*>(index)));
 			case ValueType::ArrayMatrix4x4:
-				return PushLuaObjectList(*(params->GetArgument<const plg::vector<plg::mat4x4>*>(index)));
+				return PushLuaObjectList(*(params.Get<const plg::vector<plg::mat4x4>*>(index)));
 			case ValueType::Vector2:
-				return PushLuaObject(*(params->GetArgument<plg::vec2*>(index)));
+				return PushLuaObject(*(params.Get<plg::vec2*>(index)));
 			case ValueType::Vector3:
-				return PushLuaObject(*(params->GetArgument<plg::vec3*>(index)));
+				return PushLuaObject(*(params.Get<plg::vec3*>(index)));
 			case ValueType::Vector4:
-				return PushLuaObject(*(params->GetArgument<plg::vec4*>(index)));
+				return PushLuaObject(*(params.Get<plg::vec4*>(index)));
 			case ValueType::Matrix4x4:
-				return PushLuaObject(*(params->GetArgument<plg::mat4x4*>(index)));
+				return PushLuaObject(*(params.Get<plg::mat4x4*>(index)));
 			default: {
 				_provider->Log(std::format(LOG_PREFIX "ParamRefToObject unsupported type {:#x}", static_cast<uint8_t>(paramType.GetType())), Severity::Fatal);
 				std::terminate();
@@ -2000,12 +1963,15 @@ namespace lualm {
 		}
 	}
 
-	void LuaLanguageModule::InternalCall(MethodHandle method, MemAddr data, const JitCallback::Parameters* params, size_t count, const JitCallback::Return* ret) {
+	void LuaLanguageModule::InternalCall(const Method& method, MemAddr data, uint64_t* parameters, size_t count, void* return_) {
 		const auto& [pluginRef, methodRef] = *data.RCast<LuaFunction*>();
-
-		const auto retType = method.GetReturnType();
-		const auto paramTypes = method.GetParamTypes();
+		
+		const auto& retType = method.GetRetType();
+		const auto& paramTypes = method.GetParamTypes();
 		const size_t paramsCount = paramTypes.size();
+
+		ParametersSpan params(parameters, count);
+		ReturnSlot ret(return_, ValueUtils::SizeOf(retType.GetType()));
 
 		int refParamsCount = 0;
 		int argCount = static_cast<int>(paramsCount);
@@ -2020,13 +1986,13 @@ namespace lualm {
 		}
 
 		for (size_t index = 0; index < paramsCount; ++index) {
-			const PropertyHandle paramType = paramTypes[index];
-			if (paramType.IsReference()) {
+			const Property& paramType = paramTypes[index];
+			if (paramType.IsRef()) {
 				++refParamsCount;
 			}
 
 			using ParamConvertionFunc = decltype(&LuaLanguageModule::ParamToObject);
-			ParamConvertionFunc const convertFunc = paramType.IsReference() ? &LuaLanguageModule::ParamRefToObject : &LuaLanguageModule::ParamToObject;
+			ParamConvertionFunc const convertFunc = paramType.IsRef() ? &LuaLanguageModule::ParamRefToObject : &LuaLanguageModule::ParamToObject;
 			const bool pushResult = (this->*convertFunc)(paramType, params, index);
 			if (!pushResult) {
 				SetFallbackReturn(retType.GetType(), ret);
@@ -2049,8 +2015,8 @@ namespace lualm {
 			int k = 0;
 
 			for (size_t index = 0; index < paramsCount; ++index) {
-				const PropertyHandle paramType = paramTypes[index];
-				if (!paramType.IsReference()) {
+				const Property& paramType = paramTypes[index];
+				if (!paramType.IsRef()) {
 					continue;
 				}
 				if (!SetRefParam(-returnCount + k + 1, paramType, params, index)) {
@@ -2071,6 +2037,47 @@ namespace lualm {
 	}
 
 #pragma endregion InternalCall
+
+	Result<LuaMethodData> LuaLanguageModule::GenerateMethodExport(const Method& method, int pluginRef) {
+		std::string_view className, methodName;
+		{
+			std::string_view funcName = method.GetFuncName();
+			if (const auto pos = funcName.find('.'); pos != std::string::npos) {
+				className = funcName.substr(0, pos);
+				methodName = funcName.substr(pos + 1);
+			} else {
+				methodName = funcName;
+			}
+		}
+
+		const bool funcIsMethod = !className.empty();
+
+		if (funcIsMethod) {
+			lua_rawgeti(_L, LUA_REGISTRYINDEX, pluginRef);
+		}
+
+		lua_getfield(_L, -1, methodName.data()); // Stack: ..., plugin, method
+		if (lua_isnil(_L, -1)) {
+			lua_pop(_L, funcIsMethod ? 2 : 1);  // Pop the nil
+			return MakeError("not found '{}' in module", method.GetFuncName());
+		}
+
+		int methodRef = luaL_ref(_L, LUA_REGISTRYINDEX); // Pops the function and stores it in the registry
+
+		if (funcIsMethod) {
+			lua_pop(_L, 1); // Pop instance
+		}
+
+		auto funcObj = std::make_unique<LuaFunction>(funcIsMethod ? pluginRef : LUA_NOREF, methodRef);
+
+		JitCallback callback{};
+		const MemAddr methodAddr = callback.GetJitFunc(method, &detail::InternalCall, funcObj.get());
+		if (!methodAddr) {
+			return MakeError("jit error: {}", callback.GetError());
+		}
+
+		return LuaMethodData{ std::move(callback), std::move(funcObj) };
+	}
 
 #pragma region ExternalCall
 
@@ -2389,188 +2396,188 @@ namespace lualm {
 				break;
 		}
 
-		a.params.AddArgument(value);
+		a.params.Add(value);
 	}
 
-	bool LuaLanguageModule::MakeExternalCallWithObject(PropertyHandle retType, JitCall::CallingFunc func, const ArgsScope& a, JitCall::Return& ret) {
-		func(a.params.GetDataPtr(), &ret);
+	bool LuaLanguageModule::MakeExternalCallWithObject(const Property& retType, JitCall::CallingFunc func, const ArgsScope& a, Return& ret) {
+		func(a.params.Get(), &ret);
 		switch (retType.GetType()) {
 			case ValueType::Void: {
 				lua_pushnil(_L);
 				return true;
 			}
 			case ValueType::Bool: {
-				const bool val = ret.GetReturn<bool>();
+				const bool val = ret.Get<bool>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Char8: {
-				const char val = ret.GetReturn<char>();
+				const char val = ret.Get<char>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Char16: {
-				const char16_t val = ret.GetReturn<char16_t>();
+				const char16_t val = ret.Get<char16_t>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Int8: {
-				const int8_t val = ret.GetReturn<int8_t>();
+				const int8_t val = ret.Get<int8_t>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Int16: {
-				const int16_t val = ret.GetReturn<int16_t>();
+				const int16_t val = ret.Get<int16_t>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Int32: {
-				const int32_t val = ret.GetReturn<int32_t>();
+				const int32_t val = ret.Get<int32_t>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Int64: {
-				const int64_t val = ret.GetReturn<int64_t>();
+				const int64_t val = ret.Get<int64_t>();
 				return PushLuaObject(val);
 			}
 			case ValueType::UInt8: {
-				const uint8_t val = ret.GetReturn<uint8_t>();
+				const uint8_t val = ret.Get<uint8_t>();
 				return PushLuaObject(val);
 			}
 			case ValueType::UInt16: {
-				const uint16_t val = ret.GetReturn<uint16_t>();
+				const uint16_t val = ret.Get<uint16_t>();
 				return PushLuaObject(val);
 			}
 			case ValueType::UInt32: {
-				const uint32_t val = ret.GetReturn<uint32_t>();
+				const uint32_t val = ret.Get<uint32_t>();
 				return PushLuaObject(val);
 			}
 			case ValueType::UInt64: {
-				const uint64_t val = ret.GetReturn<uint64_t>();
+				const uint64_t val = ret.Get<uint64_t>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Pointer: {
-				void* val = ret.GetReturn<void*>();
+				void* val = ret.Get<void*>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Float: {
-				const float val = ret.GetReturn<float>();
+				const float val = ret.Get<float>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Double: {
-				const double val = ret.GetReturn<double>();
+				const double val = ret.Get<double>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Function: {
-				void* const val = ret.GetReturn<void*>();
-				return PushOrCreateFunctionObject(retType.GetPrototype(), val);
+				void* const val = ret.Get<void*>();
+				return PushOrCreateFunctionObject(*retType.GetPrototype(), val);
 			}
 			case ValueType::String: {
-				auto* const str = ret.GetReturn<plg::string*>();
+				auto* const str = ret.Get<plg::string*>();
 				return PushLuaObject(*str);
 			}
 			case ValueType::Any: {
-				auto* const any = ret.GetReturn<plg::any*>();
+				auto* const any = ret.Get<plg::any*>();
 				return PushLuaObject(*any);
 			}
 			case ValueType::ArrayBool: {
-				auto* const arr = ret.GetReturn<plg::vector<bool>*>();
+				auto* const arr = ret.Get<plg::vector<bool>*>();
 				return PushLuaObjectList<bool>(*arr);
 			}
 			case ValueType::ArrayChar8: {
-				auto* const arr = ret.GetReturn<plg::vector<char>*>();
+				auto* const arr = ret.Get<plg::vector<char>*>();
 				return PushLuaObjectList<char>(*arr);
 			}
 			case ValueType::ArrayChar16: {
-				auto* const arr = ret.GetReturn<plg::vector<char16_t>*>();
+				auto* const arr = ret.Get<plg::vector<char16_t>*>();
 				return PushLuaObjectList<char16_t>(*arr);
 			}
 			case ValueType::ArrayInt8: {
-				auto* const arr = ret.GetReturn<plg::vector<int8_t>*>();
+				auto* const arr = ret.Get<plg::vector<int8_t>*>();
 				return PushLuaObjectList<int8_t>(*arr);
 			}
 			case ValueType::ArrayInt16: {
-				auto* const arr = ret.GetReturn<plg::vector<int16_t>*>();
+				auto* const arr = ret.Get<plg::vector<int16_t>*>();
 				return PushLuaObjectList<int16_t>(*arr);
 			}
 			case ValueType::ArrayInt32: {
-				auto* const arr = ret.GetReturn<plg::vector<int32_t>*>();
+				auto* const arr = ret.Get<plg::vector<int32_t>*>();
 				return PushLuaObjectList<int32_t>(*arr);
 			}
 			case ValueType::ArrayInt64: {
-				auto* const arr = ret.GetReturn<plg::vector<int64_t>*>();
+				auto* const arr = ret.Get<plg::vector<int64_t>*>();
 				return PushLuaObjectList<int64_t>(*arr);
 			}
 			case ValueType::ArrayUInt8: {
-				auto* const arr = ret.GetReturn<plg::vector<uint8_t>*>();
+				auto* const arr = ret.Get<plg::vector<uint8_t>*>();
 				return PushLuaObjectList<uint8_t>(*arr);
 			}
 			case ValueType::ArrayUInt16: {
-				auto* const arr = ret.GetReturn<plg::vector<uint16_t>*>();
+				auto* const arr = ret.Get<plg::vector<uint16_t>*>();
 				return PushLuaObjectList<uint16_t>(*arr);
 			}
 			case ValueType::ArrayUInt32: {
-				auto* const arr = ret.GetReturn<plg::vector<uint32_t>*>();
+				auto* const arr = ret.Get<plg::vector<uint32_t>*>();
 				return PushLuaObjectList<uint32_t>(*arr);
 			}
 			case ValueType::ArrayUInt64: {
-				auto* const arr = ret.GetReturn<plg::vector<uint64_t>*>();
+				auto* const arr = ret.Get<plg::vector<uint64_t>*>();
 				return PushLuaObjectList<uint64_t>(*arr);
 			}
 			case ValueType::ArrayPointer: {
-				auto* const arr = ret.GetReturn<plg::vector<void*>*>();
+				auto* const arr = ret.Get<plg::vector<void*>*>();
 				return PushLuaObjectList<void*>(*arr);
 			}
 			case ValueType::ArrayFloat: {
-				auto* const arr = ret.GetReturn<plg::vector<float>*>();
+				auto* const arr = ret.Get<plg::vector<float>*>();
 				return PushLuaObjectList<float>(*arr);
 			}
 			case ValueType::ArrayDouble: {
-				auto* const arr = ret.GetReturn<plg::vector<double>*>();
+				auto* const arr = ret.Get<plg::vector<double>*>();
 				return PushLuaObjectList<double>(*arr);
 			}
 			case ValueType::ArrayString: {
-				auto* const arr = ret.GetReturn<plg::vector<plg::string>*>();
+				auto* const arr = ret.Get<plg::vector<plg::string>*>();
 				return PushLuaObjectList<plg::string>(*arr);
 			}
 			case ValueType::ArrayAny: {
-				auto* const arr = ret.GetReturn<plg::vector<plg::any>*>();
+				auto* const arr = ret.Get<plg::vector<plg::any>*>();
 				return PushLuaObjectList<plg::any>(*arr);
 			}
 			case ValueType::ArrayVector2: {
-				auto* const arr = ret.GetReturn<plg::vector<plg::vec2>*>();
+				auto* const arr = ret.Get<plg::vector<plg::vec2>*>();
 				return PushLuaObjectList<plg::vec2>(*arr);
 			}
 			case ValueType::ArrayVector3: {
-				auto* const arr = ret.GetReturn<plg::vector<plg::vec3>*>();
+				auto* const arr = ret.Get<plg::vector<plg::vec3>*>();
 				return PushLuaObjectList<plg::vec3>(*arr);
 			}
 			case ValueType::ArrayVector4: {
-				auto* const arr = ret.GetReturn<plg::vector<plg::vec4>*>();
+				auto* const arr = ret.Get<plg::vector<plg::vec4>*>();
 				return PushLuaObjectList<plg::vec4>(*arr);
 			}
 			case ValueType::ArrayMatrix4x4: {
-				auto* const arr = ret.GetReturn<plg::vector<plg::mat4x4>*>();
+				auto* const arr = ret.Get<plg::vector<plg::mat4x4>*>();
 				return PushLuaObjectList<plg::mat4x4>(*arr);
 			}
 			case ValueType::Vector2: {
-				const plg::vec2 val = ret.GetReturn<plg::vec2>();
+				const plg::vec2 val = ret.Get<plg::vec2>();
 				return PushLuaObject(val);
 			}
 			case ValueType::Vector3: {
 				plg::vec3 val;
 				if (ValueUtils::IsHiddenParam(retType.GetType())) {
-					val = *ret.GetReturn<plg::vec3*>();
+					val = *ret.Get<plg::vec3*>();
 				} else {
-					val = ret.GetReturn<plg::vec3>();
+					val = ret.Get<plg::vec3>();
 				}
 				return PushLuaObject(val);
 			}
 			case ValueType::Vector4: {
 				plg::vec4 val;
 				if (ValueUtils::IsHiddenParam(retType.GetType())) {
-					val = *ret.GetReturn<plg::vec4*>();
+					val = *ret.Get<plg::vec4*>();
 				} else {
-					val = ret.GetReturn<plg::vec4>();
+					val = ret.Get<plg::vec4>();
 				}
 				return PushLuaObject(val);
 			}
 			case ValueType::Matrix4x4: {
-				plg::mat4x4 val = *ret.GetReturn<plg::mat4x4*>();
+				plg::mat4x4 val = *ret.Get<plg::mat4x4*>();
 				return PushLuaObject(val);
 			}
 			default:
@@ -2579,12 +2586,12 @@ namespace lualm {
 		}
 	}
 
-	bool LuaLanguageModule::PushObjectAsParam(PropertyHandle paramType, int arg, ArgsScope& a) {
+	bool LuaLanguageModule::PushObjectAsParam(const Property& paramType, int arg, ArgsScope& a) {
 		const auto PushValParam = [&a](auto&& value) {
 			if (!value) {
 				return false;
 			}
-			a.params.AddArgument(*value);
+			a.params.Add(*value);
 			return true;
 		};
 		const auto PushRefParam = [&paramType, &a](void* value) {
@@ -2592,7 +2599,7 @@ namespace lualm {
 				return false;
 			}
 			a.storage.emplace_back(value, paramType.GetType());
-			a.params.AddArgument(value);
+			a.params.Add(value);
 			return true;
 		};
 
@@ -2630,7 +2637,7 @@ namespace lualm {
 			case ValueType::Any:
 				return PushRefParam(CreateValue<plg::any>(arg));
 			case ValueType::Function:
-				return PushValParam(GetOrCreateFunctionValue(paramType.GetPrototype(), arg));
+				return PushValParam(GetOrCreateFunctionValue(*paramType.GetPrototype(), arg));
 			case ValueType::ArrayBool:
 				return PushRefParam(CreateArray<bool>(arg));
 			case ValueType::ArrayChar8:
@@ -2685,13 +2692,13 @@ namespace lualm {
 		}
 	}
 
-	bool LuaLanguageModule::PushObjectAsRefParam(PropertyHandle paramType, int arg, ArgsScope& a) {
+	bool LuaLanguageModule::PushObjectAsRefParam(const Property& paramType, int arg, ArgsScope& a) {
 		const auto PushRefParam = [&paramType, &a](void* value) {
 			if (!value) {
 				return false;
 			}
 			a.storage.emplace_back(value, paramType.GetType());
-			a.params.AddArgument(value);
+			a.params.Add(value);
 			return true;
 		};
 
@@ -2782,7 +2789,7 @@ namespace lualm {
 		}
 	}
 
-	bool LuaLanguageModule::StorageValueToObject(PropertyHandle paramType, const ArgsScope& a, size_t index) {
+	bool LuaLanguageModule::StorageValueToObject(const Property& paramType, const ArgsScope& a, size_t index) {
 		switch (paramType.GetType()) {
 			case ValueType::Bool:
 				return PushLuaObject(*static_cast<bool*>(std::get<0>(a.storage[index])));
@@ -2870,42 +2877,45 @@ namespace lualm {
 		}
 	}
 
-	void LuaLanguageModule::ExternalCall(MethodHandle method, MemAddr data, const JitCallback::Parameters* p, size_t count, const JitCallback::Return* ret) {
-		// int (MethodLuaCall*)(lua_State* L)
-		assert(p->GetArgument<lua_State*>(0) == _L);
+	void LuaLanguageModule::ExternalCall(const Method& method, MemAddr data, uint64_t* parameters, size_t count, void* return_) {
+		ParametersSpan params(parameters, count);
+		ReturnSlot ret(return_, ValueUtils::SizeOf(ValueType::Int32));
 
-		const auto paramTypes = method.GetParamTypes();
+		// int (MethodLuaCall*)(lua_State* L)
+		assert(params.Get<lua_State*>(0) == _L);
+
+		const auto& paramTypes = method.GetParamTypes();
 		const size_t paramCount = paramTypes.size();
 		const auto size = static_cast<size_t>(lua_gettop(_L));
 		const size_t t = size - paramCount;
 		if (t == 0 && size != paramCount) {
 			luaL_error(_L, "Wrong number of parameters, %zu when %zu required.", size, paramCount);
-			ret->SetReturn<int>(0);
+			ret.Set<int>(0);
 			return;
 		}
 
-		const auto retType = method.GetReturnType();
+		const auto& retType = method.GetRetType();
 		const bool hasHiddenParam = ValueUtils::IsHiddenParam(retType.GetType());
 		int refParamsCount = 0;
 
 		ArgsScope a(hasHiddenParam + paramCount);
-		JitCall::Return r;
+		Return r;
 
 		if (hasHiddenParam) {
 			BeginExternalCall(retType.GetType(), a);
 		}
 
 		for (size_t i = 0; i < paramCount; ++i) {
-			const PropertyHandle paramType = paramTypes[i];
-			if (paramType.IsReference()) {
+			const Property& paramType = paramTypes[i];
+			if (paramType.IsRef()) {
 				++refParamsCount;
 			}
 			using PushParamFunc = decltype(&LuaLanguageModule::PushObjectAsParam);
-			PushParamFunc const pushParamFunc = paramType.IsReference() ? &LuaLanguageModule::PushObjectAsRefParam : &LuaLanguageModule::PushObjectAsParam;
+			PushParamFunc const pushParamFunc = paramType.IsRef() ? &LuaLanguageModule::PushObjectAsRefParam : &LuaLanguageModule::PushObjectAsParam;
 			const bool pushResult = (this->*pushParamFunc)(paramType, static_cast<int>(i + 1 + t), a);
 			if (!pushResult) {
 				// pushParamFunc sets error
-				ret->SetReturn<int>(static_cast<int>(i + 1));
+				ret.Set<int>(static_cast<int>(i + 1));
 				return;
 			}
 		}
@@ -2916,8 +2926,8 @@ namespace lualm {
 			int k = 0;
 
 			for (size_t i = 0, j = hasHiddenParam; i < paramCount; ++i) {
-				const PropertyHandle paramType = paramTypes[i];
-				if (!paramType.IsReference()) {
+				const Property& paramType = paramTypes[i];
+				if (!paramType.IsRef()) {
 					continue;
 				}
 				StorageValueToObject(paramType, a, j++);
@@ -2927,33 +2937,33 @@ namespace lualm {
 			}
 		}
 
-		ret->SetReturn<int>(refParamsCount + result);
+		ret.Set<int>(refParamsCount + result);
 	}
 
 #pragma endregion ExternalCall
 
 	void LuaLanguageModule::ResolveRequiredModule(std::string_view moduleName) {
-		PluginHandle plugin = _provider->FindPlugin(moduleName);
-		if (plugin && plugin.GetState() == PluginState::Loaded) {
-			TryCreateModule(plugin, false);
+		const auto* plugin = _provider->FindExtension(moduleName);
+		if (plugin && plugin->GetState() == ExtensionState::Loaded) {
+			TryCreateModule(*plugin, false);
 		} else {
 			luaL_requiref(_L, moduleName.data(), &LoadEmpty, 1);
 			lua_pop(_L, 1);
 		}
 	}
 
-	void LuaLanguageModule::GenerateEnum(LuaEnumSet& enumSet, PropertyHandle paramType) {
-		if (const auto prototype = paramType.GetPrototype()) {
-			GenerateEnum(enumSet, prototype);
+	void LuaLanguageModule::GenerateEnum(LuaEnumSet& enumSet, const Property& paramType) {
+		if (const auto* prototype = paramType.GetPrototype()) {
+			GenerateEnum(enumSet, *prototype);
 		}
 
-		const auto enumerator = paramType.GetEnum();
+		const auto* enumerator = paramType.GetEnumerate();
 		if (!enumerator) {
 			return;
 		}
 
-		const auto name = enumerator.GetName();
-		const auto values = enumerator.GetValues();
+		const auto& name = enumerator->GetName();
+		const auto& values = enumerator->GetValues();
 		if (enumSet.contains(name) || values.empty()) {
 			return;
 		}
@@ -2970,21 +2980,21 @@ namespace lualm {
 		enumSet.emplace(name);
 	}
 
-	void LuaLanguageModule::GenerateEnum(LuaEnumSet& enumSet, MethodHandle method) {
-		GenerateEnum(enumSet, method.GetReturnType());
+	void LuaLanguageModule::GenerateEnum(LuaEnumSet& enumSet, const Method& method) {
+		GenerateEnum(enumSet, method.GetRetType());
 		for (const auto& paramType : method.GetParamTypes()) {
 			GenerateEnum(enumSet, paramType);
 		}
 	}
 
-	std::vector<luaL_Reg> LuaLanguageModule::CreateFunctions(PluginHandle plugin) {
-		const auto& methods = plugin.GetMethods();
+	std::vector<luaL_Reg> LuaLanguageModule::CreateFunctions(const Extension& plugin) {
+		const auto& methods = plugin.GetMethodsData();
 
 		std::vector<luaL_Reg> funcs;
 		funcs.reserve(methods.size() + 1);
 
 		for (const auto& [method, addr] : methods) {
-			JitCall call(_jitRuntime);
+			JitCall call{};
 
 			const MemAddr callAddr = call.GetJitFunc(method, addr);
 			if (!callAddr) {
@@ -2992,14 +3002,14 @@ namespace lualm {
 				return funcs;
 			}
 
-			JitCallback callback(_jitRuntime);
+			JitCallback callback{};
 
-			asmjit::FuncSignature sig(asmjit::CallConvId::kCDecl);
-			sig.addArg(asmjit::TypeId::kUIntPtr);
-			sig.setRet(asmjit::TypeId::kInt32);
+			Signature sig{};
+			sig.AddArg(ValueType::Pointer);
+			sig.SetRet(ValueType::Int32);
 
 			// Generate function --> int (MethodLuaCall*)(lua_State* L)
-			const MemAddr methodAddr = callback.GetJitFunc(sig, method, &detail::ExternalCall, callAddr, false);
+			const MemAddr methodAddr = callback.GetJitFunc(sig, &method, &detail::ExternalCall, callAddr, false);
 			if (!methodAddr) {
 				luaL_error(_L, "Lang module JIT failed to generate c++ lua_CFunction wrapper '%s'", callback.GetError().data());
 				return funcs;
@@ -3017,36 +3027,32 @@ namespace lualm {
 	lua_CFunction LuaLanguageModule::OpenModule(std::string filename) {
 		filename.reserve(sizeof(std::string)); // disable SSO
 
-		JitCallback callback(_jitRuntime);
+		JitCallback callback{};
 
-		asmjit::FuncSignature sig(asmjit::CallConvId::kCDecl);
-		sig.addArg(asmjit::TypeId::kUIntPtr);
-		sig.setRet(asmjit::TypeId::kInt32);
+		Signature sig{};
+		sig.AddArg(ValueType::Pointer);
+		sig.SetRet(ValueType::Int32);
 
 		// Generate function --> int (MethodLuaCall*)(lua_State* L)
-		const MemAddr methodAddr = callback.GetJitFunc(sig, {}, &LoadFile, filename.c_str(), false);
+		const MemAddr methodAddr = callback.GetJitFunc(sig, nullptr, &LoadFile, filename.c_str(), false);
 		if (methodAddr) {
 			_loadFunctions.emplace_back(std::move(callback), std::move(filename));
 		}
 		return methodAddr.RCast<lua_CFunction>();
 	}
 
-	InitResult LuaLanguageModule::Initialize(std::weak_ptr<IPlugifyProvider> provider, ModuleHandle module) {
-		if (!((_provider = provider.lock()))) {
-			return ErrorData{ "Provider not exposed" };
-		}
-
-		_jitRuntime = std::make_shared<asmjit::JitRuntime>();
+	Result<InitData> LuaLanguageModule::Initialize(const Provider& provider, const Extension& module) {
+		_provider = std::make_unique<Provider>(provider);
 
 		std::error_code ec;
-		const fs::path moduleBasePath = fs::absolute(module.GetBaseDir(), ec);
+		const fs::path moduleBasePath = fs::absolute(module.GetLocation(), ec);
 		if (ec) {
-			return ErrorData{ "Failed to get module directory path" };
+			return MakeError("Failed to get module directory path");
 		}
 
 		const fs::path libPath = moduleBasePath / "lib";
 		if (!fs::exists(libPath, ec) || !fs::is_directory(libPath, ec)) {
-			return ErrorData{ "lib directory not exists" };
+			return MakeError("lib directory not exists");
 		}
 
 		_L = luaL_newstate();
@@ -3054,8 +3060,8 @@ namespace lualm {
 
 		for (const auto& entry : fs::directory_iterator(libPath)) {
 			if (entry.is_regular_file() && entry.path().extension() == ".lua") {
-				std::string filename = entry.path().filename().replace_extension().string();
-				luaL_requiref(_L, filename.c_str(), OpenModule(entry.path().string()), 0);
+				const std::string& filename = plg::as_string(entry.path().filename().replace_extension());
+				luaL_requiref(_L, filename.c_str(), OpenModule(plg::as_string(entry.path())), 0);
 				lua_pop(_L, 1);
 			}
 		}
@@ -3103,7 +3109,7 @@ namespace lualm {
 
 		lua_pop(_L, 3); // Pop plugify, loaded, package
 
-		return InitResultData{{.hasUpdate = false}};
+		return InitData{{.hasUpdate = false}};
 	}
 
 	void LuaLanguageModule::Shutdown() {
@@ -3147,31 +3153,31 @@ namespace lualm {
 		_L = nullptr;
 	}
 
-	void LuaLanguageModule::OnUpdate(DateTime dt) {
+	void LuaLanguageModule::OnUpdate(std::chrono::milliseconds dt) {
 	}
 
-	LoadResult LuaLanguageModule::OnPluginLoad(PluginHandle plugin) {
-		const std::string_view entryPoint = plugin.GetDescriptor().GetEntryPoint();
+	Result<LoadData> LuaLanguageModule::OnPluginLoad(const Extension& plugin) {
+		const std::string_view entryPoint = plugin.GetEntry();
 		if (entryPoint.empty()) {
-			return ErrorData{ "Incorrect entry point: empty" };
+			return MakeError("Incorrect entry point: empty");
 		}
 		if (entryPoint.find_first_of("/\\") != std::string::npos) {
-			return ErrorData{ "Incorrect entry point: contains '/' or '\\'" };
+			return MakeError("Incorrect entry point: contains '/' or '\\'");
 		}
 		const std::string::size_type lastDotPos = entryPoint.find_last_of('.');
 		if (lastDotPos == std::string::npos) {
-			return ErrorData{ "Incorrect entry point: not have any dot '.' character" };
+			return MakeError("Incorrect entry point: not have any dot '.' character");
 		}
 		std::string_view pluginClassName(entryPoint.begin() + static_cast<ptrdiff_t>(lastDotPos + 1), entryPoint.end());
 		if (pluginClassName.empty()) {
-			return ErrorData{ "Incorrect entry point: empty class name part" };
+			return MakeError("Incorrect entry point: empty class name part");
 		}
 		std::string_view modulePathRel(entryPoint.begin(), entryPoint.begin() + static_cast<ptrdiff_t>(lastDotPos));
 		if (modulePathRel.empty()) {
-			return ErrorData{ "Incorrect entry point: empty module path part" };
+			return MakeError("Incorrect entry point: empty module path part");
 		}
 
-		const fs::path baseFolder(plugin.GetBaseDir());
+		const fs::path& baseFolder = plugin.GetLocation();
 		std::string modulePath(modulePathRel);
 
 		ReplaceAll(modulePath, ".", { static_cast<char>(fs::path::preferred_separator) });
@@ -3180,11 +3186,11 @@ namespace lualm {
 		const fs::path filePath = baseFolder / filePathRelative;
 		std::error_code ec;
 		if (!fs::exists(filePath, ec) || !fs::is_regular_file(filePath, ec)) {
-			return ErrorData{ std::format("Module file '{}' not exist", filePath.string()) };
+			return MakeError("Module file '{}' not exist", plg::as_string(filePath));
 		}
-		std::string fileName = filePath.filename().replace_extension().string();
+		const std::string& fileName = plg::as_string(filePath.filename().replace_extension());
 
-		luaL_requiref(_L, fileName.c_str(), OpenModule(filePath.string()), 0);
+		luaL_requiref(_L, fileName.c_str(), OpenModule(plg::as_string(filePath)), 0);
 		lua_pop(_L, 1);
 
 		lua_getglobal(_L, "package"); // Stack: package
@@ -3192,24 +3198,23 @@ namespace lualm {
 		lua_getfield(_L, -1, fileName.c_str()); // Stack: package, loaded, plugin
 		if (!lua_istable(_L, -1)) {
 			lua_pop(_L, 3); // Pop plugin, loaded, package
-			return ErrorData{ "Failed to find table" };
+			return MakeError("Failed to find table");
 		}
 
 		lua_getfield(_L, -1, pluginClassName.data()); // Stack: package, loaded, plugin, Plugin
 		if (!lua_istable(_L, -1)) {
 			lua_pop(_L, 4); // Pop Plugin, plugin, loaded, package
-			return ErrorData{ "Failed to find plugin class" };
+			return MakeError("Failed to find plugin class");
 		}
 
 		// Get Plugin:new
 		lua_getfield(_L, -1, "new"); // Stack: ..., Plugin, Plugin.new
 		if (!lua_isfunction(_L, -1)) {
 			lua_pop(_L, 5); // Pop new, Plugin, plugin, loaded, package
-			return ErrorData{ "Failed to find plugin constructor" };
+			return MakeError("Failed to find plugin constructor");
 		}
 
-		PluginDescriptorHandle desc = plugin.GetDescriptor();
-		std::span<const PluginReferenceDescriptorHandle> dependencies = desc.GetDependencies();
+		const auto& dependencies = plugin.GetDependencies();
 
 		plg::vector<std::string_view> deps;
 		deps.reserve(dependencies.size());
@@ -3219,22 +3224,26 @@ namespace lualm {
 
 		// Push arguments for Plugin:new
 		lua_pushvalue(_L, -2); // self (Plugin)
-		PushLuaObject(plugin.GetId()); // id
+		PushLuaObject(static_cast<int64_t>(plugin.GetId())); // id
 		PushLuaObject(plugin.GetName()); // name
-		PushLuaObject(plugin.GetFriendlyName()); // full_name
-		PushLuaObject(desc.GetDescription()); // description
-		PushLuaObject(desc.GetVersionName()); // version
-		PushLuaObject(desc.GetCreatedBy()); // author
-		PushLuaObject(desc.GetCreatedByURL()); // website
-		PushLuaObject(plugin.GetBaseDir()); // base_dir
-		PushLuaObject(plugin.GetConfigsDir()); // configs_dir
-		PushLuaObject(plugin.GetDataDir()); // data_dir
-		PushLuaObject(plugin.GetLogsDir()); // logs_dir
+		PushLuaObject(plugin.GetDescription()); // description
+		PushLuaObject(plugin.GetVersionString()); // version
+		PushLuaObject(plugin.GetAuthor()); // author
+		PushLuaObject(plugin.GetWebsite()); // website
+		PushLuaObject(plugin.GetLicense()); // license
+		PushLuaObject(plugin.GetLocation()); // location
 		PushLuaObjectList(deps); // dependencies
-		if (lua_pcall(_L, 13, 1, 0) != LUA_OK) {
+
+		PushLuaObject(_provider->GetBaseDir()); // base_dir
+		PushLuaObject(_provider->GetExtensionsDir()); // extensions_dir
+		PushLuaObject(_provider->GetConfigsDir()); // configs_dir
+		PushLuaObject(_provider->GetDataDir()); // data_dir
+		PushLuaObject(_provider->GetLogsDir()); // logs_dir
+		PushLuaObject(_provider->GetCacheDir()); // cache_dir
+		if (lua_pcall(_L, 16, 1, 0) != LUA_OK) {
 			std::string errorString = std::format("Failed to create plugin instance: {}", lua_tostring(_L, -1));
 			lua_pop(_L, 5); // Pop error, Plugin, plugin, loaded, package
-			return ErrorData{ std::move(errorString) };
+			return MakeError(std::move(errorString));
 		}
 
 		// Store references to plugin_start, plugin_end, plugin_update (if they exist)
@@ -3265,61 +3274,28 @@ namespace lualm {
 		int pluginRef = luaL_ref(_L, LUA_REGISTRYINDEX); // Store instance
 		lua_pop(_L, 1); // Pop Plugin
 
-		const auto exportedMethods = plugin.GetDescriptor().GetExportedMethods();
+		const auto& exportedMethods = plugin.GetMethods();
 		std::vector<std::string> exportErrors;
-		std::vector<std::pair<MethodHandle, LuaMethodData>> methodsHolders;
+		std::vector<std::pair<const Method&, LuaMethodData>> methodsHolders;
 
-		for (const MethodHandle method : exportedMethods) {
-			std::string_view className, methodName;
-			{
-				std::string_view funcName = method.GetFunctionName();
-				if (const auto pos = funcName.find('.'); pos != std::string::npos) {
-					className = funcName.substr(0, pos);
-					methodName = funcName.substr(pos + 1);
-				} else {
-					methodName = funcName;
+		for (size_t i = 0; i < exportedMethods.size(); ++i) {
+			const auto& method = exportedMethods[i];
+			Result<LuaMethodData> generateResult = GenerateMethodExport(method, pluginRef);
+			if (!generateResult) {
+				exportErrors.emplace_back(std::format("{:>3}. {} {}", i + 1, method.GetName(), generateResult.error()));
+				if (constexpr size_t kMaxDisplay = 100; exportErrors.size() >= kMaxDisplay) {
+					exportErrors.emplace_back(std::format("... and {} more", exportedMethods.size() - kMaxDisplay));
+					break;
 				}
-			}
-
-			const bool funcIsMethod = !className.empty();
-
-			if (funcIsMethod) {
-				lua_rawgeti(_L, LUA_REGISTRYINDEX, pluginRef);
-			}
-
-			lua_getfield(_L, -1, methodName.data()); // Stack: ..., plugin, method
-			if (lua_isnil(_L, -1)) {
-				exportErrors.emplace_back(std::format("{} (not found '{}' in module)", method.GetName(), method.GetFunctionName()));
-				lua_pop(_L, funcIsMethod ? 2 : 1);  // Pop the nil
 				continue;
 			}
-
-			int methodRef = luaL_ref(_L, LUA_REGISTRYINDEX); // Pops the function and stores it in the registry
-
-			if (funcIsMethod) {
-				lua_pop(_L, 1); // Pop instance
-			}
-
-			auto funcObj = std::make_unique<LuaFunction>(funcIsMethod ? pluginRef : LUA_NOREF, methodRef);
-
-			JitCallback callback(_jitRuntime);
-			const MemAddr methodAddr = callback.GetJitFunc(method, &detail::InternalCall, funcObj.get());
-			if (!methodAddr) {
-				exportErrors.emplace_back(std::format("{} (jit error: {})", method.GetName(), callback.GetError()));
-				continue;
-			}
-
-			methodsHolders.emplace_back(method, LuaMethodData{std::move(callback), std::move(funcObj)});
+			methodsHolders.emplace_back(method, std::move(*generateResult));
 		}
 
 		lua_pop(_L, 3); // Pop plugin, loaded, package
 
 		if (!exportErrors.empty()) {
-			std::string errorString = "Methods export error(s): " + exportErrors[0];
-			for (auto it = std::next(exportErrors.begin()); it != exportErrors.end(); ++it) {
-				std::format_to(std::back_inserter(errorString), ", {}", *it);
-			}
-			return ErrorData{ std::move(errorString) };
+			return MakeError("Invalid methods:\n{}", plg::join(exportErrors, "\n"));
 		}
 
 		const auto [it, result] = _pluginsMap.try_emplace(
@@ -3329,7 +3305,7 @@ namespace lualm {
 				pluginStart,
 				pluginEnd);
 		if (!result) {
-			return ErrorData{ std::format("Save plugin data to map unsuccessful") };
+			return MakeError("Save plugin data to map unsuccessful");
 		}
 
 		std::vector<MethodData> methods;
@@ -3342,7 +3318,7 @@ namespace lualm {
 			AddToFunctionsMap(methodAddr, *methodData.luaFunction);
 			_luaMethods.emplace_back(std::move(methodData));
 		}
-		return LoadResultData{ std::move(methods), &it->second, { pluginUpdate != LUA_NOREF, pluginStart != LUA_NOREF, pluginEnd != LUA_NOREF, !exportedMethods.empty() }};
+		return LoadData{ std::move(methods), &it->second, { pluginUpdate != LUA_NOREF, pluginStart != LUA_NOREF, pluginEnd != LUA_NOREF, !exportedMethods.empty() }};
 	}
 
 	void LuaLanguageModule::AddToFunctionsMap(void* funcAddr, LuaFunction funcObj) {
@@ -3376,8 +3352,8 @@ namespace lualm {
 		_provider->Log(trace, Severity::Error);
 	}
 
-	void LuaLanguageModule::OnPluginStart(PluginHandle plugin) {
-		const auto& [instance, update, start, end] = *plugin.GetData().RCast<PluginData*>();
+	void LuaLanguageModule::OnPluginStart(const Extension& plugin) {
+		const auto& [instance, update, start, end] = *plugin.GetUserData().RCast<PluginData*>();
 		if (start != LUA_NOREF) {
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, instance); // Stack: instance
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, start); // Stack: instance, plugin_start
@@ -3391,13 +3367,13 @@ namespace lualm {
 		}
 	}
 
-	void LuaLanguageModule::OnPluginUpdate(PluginHandle plugin, DateTime dt) {
-		const auto& [instance, update, start, end] = *plugin.GetData().RCast<PluginData*>();
+	void LuaLanguageModule::OnPluginUpdate(const Extension& plugin, std::chrono::milliseconds dt) {
+		const auto& [instance, update, start, end] = *plugin.GetUserData().RCast<PluginData*>();
 		if (update != LUA_NOREF) {
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, instance); // Stack: instance
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, update); // Stack: instance, plugin_update
 			lua_pushvalue(_L, -2); // self
-			lua_pushnumber(_L, dt.AsSeconds()); // dt
+			lua_pushnumber(_L, std::chrono::duration<float>(dt).count()); // dt
 			if (lua_pcall(_L, 2, 0, 0) != LUA_OK) {
 				LogError();
 				_provider->Log(std::format(LOG_PREFIX "{}: call of 'plugin_update' failed", plugin.GetName()), Severity::Error);
@@ -3407,8 +3383,8 @@ namespace lualm {
 		}
 	}
 
-	void LuaLanguageModule::OnPluginEnd(PluginHandle plugin) {
-		const auto& [instance, update, start, end] = *plugin.GetData().RCast<PluginData*>();
+	void LuaLanguageModule::OnPluginEnd(const Extension& plugin) {
+		const auto& [instance, update, start, end] = *plugin.GetUserData().RCast<PluginData*>();
 		if (end != LUA_NOREF) {
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, instance); // Stack: instance
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, end); // Stack: instance, plugin_end
@@ -3422,11 +3398,11 @@ namespace lualm {
 		}
 	}
 
-	void LuaLanguageModule::OnMethodExport(PluginHandle plugin) {
+	void LuaLanguageModule::OnMethodExport(const Extension& plugin) {
 		TryCreateModule(plugin, true);
 	}
 
-	void LuaLanguageModule::TryCreateModule(PluginHandle plugin, bool empty) {
+	void LuaLanguageModule::TryCreateModule(const Extension& plugin, bool empty) {
 		auto is_table_empty = [](lua_State *L, int index) {
 			// Ensure the item at the given index is a table
 			if (!lua_istable(L, index)) {
@@ -3476,7 +3452,7 @@ namespace lualm {
 		}
 
 		LuaEnumSet enums;
-		for (const auto& [method, _] : plugin.GetMethods()) {
+		for (const auto& [method, _] : plugin.GetMethodsData()) {
 			GenerateEnum(enums, method);
 		}
 

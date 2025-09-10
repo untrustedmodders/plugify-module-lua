@@ -1,13 +1,19 @@
+#pragma once
 
 #include <map>
 #include <unordered_set>
-#include <plugify/any.hpp>
-#include <plugify/jit/call.hpp>
-#include <plugify/jit/callback.hpp>
+#include <plugify/call.hpp>
+#include <plugify/callback.hpp>
 #include <plugify/language_module.hpp>
 #include <plugify/method.hpp>
-#include <plugify/module.hpp>
-#include <plugify/plugin.hpp>
+#include <plugify/extension.hpp>
+#include <plugify/logger.hpp>
+#include <plugify/provider.hpp>
+#include <plugify/enum_object.hpp>
+#include <plugify/enum_value.hpp>
+
+#include <plg/any.hpp>
+#include <plg/format.hpp>
 
 extern "C" {
 #include <lua.h>
@@ -15,38 +21,9 @@ extern "C" {
 #include <lualib.h>
 }
 
-namespace {
-	template<typename T, typename... Rest>
-	void hash_combine(std::size_t& seed, const T& v, const Rest&... rest) {
-		seed ^= std::hash<T>{}(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-		(hash_combine(seed, rest), ...);
-	}
-}
+using namespace plugify;
 
 namespace lualm {
-	template<typename T1, typename T2>
-		struct pair_hash {
-		size_t operator()(std::pair<T1, T2> const& p) const {
-			size_t seed{};
-			hash_combine(seed, p.first, p.second);
-			return seed;
-		}
-	};
-
-	// heterogeneous lookup
-	struct string_hash {
-		using is_transparent = void;
-		[[nodiscard]] size_t operator()(const char* txt) const {
-			return std::hash<std::string_view>{}(txt);
-		}
-		[[nodiscard]] size_t operator()(std::string_view txt) const {
-			return std::hash<std::string_view>{}(txt);
-		}
-		[[nodiscard]] size_t operator()(const std::string& txt) const {
-			return std::hash<std::string>{}(txt);
-		}
-	};
-
 	enum class LuaAbstractType : size_t {
 		Nil,
 		Bool,
@@ -73,28 +50,37 @@ namespace lualm {
 	constexpr auto MaxLuaTypes = static_cast<size_t>(LuaAbstractType::Max);
 
 	using LuaFunction = std::pair<int, int>;
-	using LuaInternalMap = std::unordered_map<LuaFunction, void*, pair_hash<int, int>>;
+	using LuaInternalMap = std::unordered_map<LuaFunction, void*, plg::pair_hash<int, int>>;
 	using LuaExternalMap = std::unordered_map<void*, LuaFunction>;
-	using LuaEnumSet = std::unordered_set<std::string, string_hash, std::equal_to<>>;
+	using LuaEnumSet = std::unordered_set<std::string, plg::string_hash, std::equal_to<>>;
 
-	class LuaLanguageModule final : public plugify::ILanguageModule {
+	struct LuaMethodData {
+		JitCallback jitCallback;
+		std::unique_ptr<LuaFunction> luaFunction;
+	};
+
+	class LuaLanguageModule final : public ILanguageModule {
 	public:
 		LuaLanguageModule() = default;
 
 		// ILanguageModule
-		plugify::InitResult Initialize(std::weak_ptr<plugify::IPlugifyProvider> provider, plugify::ModuleHandle module) override;
+		Result<InitData> Initialize(const Provider& provider, const Extension& module) override;
 		void Shutdown() override;
-		void OnUpdate(plugify::DateTime dt) override;
-		plugify::LoadResult OnPluginLoad(plugify::PluginHandle plugin) override;
-		void OnPluginStart(plugify::PluginHandle plugin) override;
-		void OnPluginUpdate(plugify::PluginHandle plugin, plugify::DateTime dt) override;
-		void OnPluginEnd(plugify::PluginHandle plugin) override;
-		void OnMethodExport(plugify::PluginHandle plugin) override;
+		void OnUpdate(std::chrono::milliseconds dt) override;
+
+		bool GenerateMethodExport(int pluginRef, const Method &method);
+
+		Result<LoadData> OnPluginLoad(const Extension& plugin) override;
+		void OnPluginStart(const Extension& plugin) override;
+		void OnPluginUpdate(const Extension& plugin, std::chrono::milliseconds dt) override;
+		void OnPluginEnd(const Extension& plugin) override;
+		void OnMethodExport(const Extension& plugin) override;
 		bool IsDebugBuild() override;
 
-		const std::shared_ptr<plugify::IPlugifyProvider>& GetProvider() const { return _provider; }
+		const std::unique_ptr<Provider>& GetProvider() const { return _provider; }
 
 	private:
+		Result<LuaMethodData> GenerateMethodExport(const Method& method, int pluginRef);
 		void AddToFunctionsMap(void* funcAddr, LuaFunction funcObj);
 		LuaFunction FindExternal(void* funcAddr) const;
 		void* FindInternal(LuaFunction funcObj) const;
@@ -111,8 +97,8 @@ namespace lualm {
 		bool PushLuaObject(const T& value);
 		template<typename T>
 		bool PushLuaObjectList(const plg::vector<T>& arrayArg);
-		std::optional<void*> GetOrCreateFunctionValue(plugify::MethodHandle method, int arg);
-		bool PushOrCreateFunctionObject(plugify::MethodHandle method, void* funcAddr);
+		std::optional<void*> GetOrCreateFunctionValue(const Method& method, int arg);
+		bool PushOrCreateFunctionObject(const Method& method, void* funcAddr);
 		template<typename T>
 		std::optional<T> GetObjectAttrAsValue(int absIndex, const char* attrName);
 		std::pair<LuaAbstractType, const char*> GetObjectType(int arg) const;
@@ -122,41 +108,40 @@ namespace lualm {
 		template<typename T>
 		void* CreateArray(int arg);
 
-		void SetFallbackReturn(plugify::ValueType retType, const plugify::JitCallback::Return* ret);
-		bool SetReturn(int arg, plugify::PropertyHandle retType, const plugify::JitCallback::Return* ret);
-		bool SetRefParam(int arg, plugify::PropertyHandle paramType, const plugify::JitCallback::Parameters* params, size_t index);
-		bool ParamToObject(plugify::PropertyHandle paramType, const plugify::JitCallback::Parameters* params, size_t index);
-		bool ParamRefToObject(plugify::PropertyHandle paramType, const plugify::JitCallback::Parameters* params, size_t index);
+		void SetFallbackReturn(ValueType retType, ReturnSlot& ret);
+		bool SetReturn(int arg, const Property& retType, ReturnSlot& ret);
+		bool SetRefParam(int arg, const Property& paramType, ParametersSpan& params, size_t index);
+		bool ParamToObject(const Property& paramType, ParametersSpan& params, size_t index);
+		bool ParamRefToObject(const Property& paramType, ParametersSpan& params, size_t index);
 
 		struct ArgsScope {
-			plugify::JitCall::Parameters params;
-			std::vector<std::pair<void*, plugify::ValueType>> storage; // used to store array temp memory
+			Parameters params;
+			std::vector<std::pair<void*, ValueType>> storage; // used to store array temp memory
 
 			explicit ArgsScope(size_t size);
 			~ArgsScope();
 		};
 
-		void BeginExternalCall(plugify::ValueType retType, ArgsScope& a) const;
-		bool MakeExternalCallWithObject(plugify::PropertyHandle retType, plugify::JitCall::CallingFunc func, const ArgsScope& a, plugify::JitCall::Return& ret);
-		bool PushObjectAsParam(plugify::PropertyHandle paramType, int arg, ArgsScope& a);
-		bool PushObjectAsRefParam(plugify::PropertyHandle paramType, int arg, ArgsScope& a);
-		bool StorageValueToObject(plugify::PropertyHandle paramType, const ArgsScope& a, size_t index);
+		void BeginExternalCall(ValueType retType, ArgsScope& a) const;
+		bool MakeExternalCallWithObject(const Property& retType, JitCall::CallingFunc func, const ArgsScope& a, Return& ret);
+		bool PushObjectAsParam(const Property& paramType, int arg, ArgsScope& a);
+		bool PushObjectAsRefParam(const Property& paramType, int arg, ArgsScope& a);
+		bool StorageValueToObject(const Property& paramType, const ArgsScope& a, size_t index);
 
 	public:
-		void GenerateEnum(LuaEnumSet& enumSet, plugify::PropertyHandle paramType);
-		void GenerateEnum(LuaEnumSet& enumSet, plugify::MethodHandle method);
-		void TryCreateModule(plugify::PluginHandle plugin, bool empty);
+		void GenerateEnum(LuaEnumSet& enumSet, const Property& paramType);
+		void GenerateEnum(LuaEnumSet& enumSet, const Method& method);
+		void TryCreateModule(const Extension& plugin, bool empty);
 		void ResolveRequiredModule(std::string_view moduleName);
-		std::vector<luaL_Reg> CreateFunctions(plugify::PluginHandle plugin);
+		std::vector<luaL_Reg> CreateFunctions(const Extension& plugin);
 		lua_CFunction OpenModule(std::string filename);
 		void LogError();
 
-		void InternalCall(plugify::MethodHandle method, plugify::MemAddr data, const plugify::JitCallback::Parameters* params, size_t count, const plugify::JitCallback::Return* ret);
-		void ExternalCall(plugify::MethodHandle method, plugify::MemAddr data, const plugify::JitCallback::Parameters* params, size_t count, const plugify::JitCallback::Return* ret);
+		void InternalCall(const Method& method, MemAddr data, uint64_t* params, size_t count, void* ret);
+		void ExternalCall(const Method& method, MemAddr data, uint64_t* params, size_t count, void* ret);
 
 	private:
-		std::shared_ptr<plugify::IPlugifyProvider> _provider;
-		std::shared_ptr<asmjit::JitRuntime> _jitRuntime;
+		std::unique_ptr<Provider> _provider;
 		lua_State* _L{nullptr};
 		int _vector2Ref{LUA_REFNIL};
 		int _vector3Ref{LUA_REFNIL};
@@ -168,26 +153,22 @@ namespace lualm {
 			int start;
 			int end;
 		};
-		std::map<plugify::UniqueId, PluginData> _pluginsMap;
-		struct LuaMethodData {
-			plugify::JitCallback jitCallback;
-			std::unique_ptr<LuaFunction> luaFunction;
-		};
+		std::map<UniqueId, PluginData> _pluginsMap;
 		std::vector<LuaMethodData> _luaMethods;
 		struct JitHolder {
-			plugify::JitCallback jitCallback;
-			plugify::JitCall jitCall;
+			JitCallback jitCallback;
+			JitCall jitCall;
 		};
 		std::vector<JitHolder> _moduleFunctions;
 		struct LoadHolder {
-			plugify::JitCallback jitCallback;
+			JitCallback jitCallback;
 			std::string filename;
 		};
 		std::vector<LoadHolder> _loadFunctions;
 		std::vector<std::vector<luaL_Reg>> _createFunctions;
 		struct ExternalHolder {
-			plugify::JitCallback jitCallback;
-			plugify::JitCall jitCall;
+			JitCallback jitCallback;
+			JitCall jitCall;
 			std::unique_ptr<LuaFunction> luaFunction;
 		};
 		std::vector<ExternalHolder> _externalFunctions;

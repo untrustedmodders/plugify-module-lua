@@ -1,0 +1,51 @@
+{% set name = "plugify-module-lua" %}
+{% set version = "REPLACE_VERSION" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: .
+
+build:
+  number: 0
+  string: "{{ target_platform | replace('-', '_') }}"
+  missing_dso_whitelist:
+    - "*/ld-linux*.so.*"  # [linux]
+    - "*/libc.so.*"       # [linux]
+    - "*/libm.so.*"       # [linux]
+    - "*/libdl.so.*"      # [linux]
+    - "*/libpthread.so.*" # [linux]
+    - "*/librt.so.*"      # [linux]
+    - "*/libplugify.so*"  # [linux]
+    - "*/plugify.dll"     # [win]
+
+requirements:
+  run:
+    - __glibc >=2.17 # [linux64]
+
+test:
+  commands:
+    - test -f $PREFIX/bin/libplugify-module-lua.so  # [linux]
+    - test -d $PREFIX/lib                           # [linux]
+    - test -f $PREFIX/plugify-module-lua.pmodule    # [linux]
+    - if not exist %PREFIX%\\bin\\plugify-module-lua.dll exit 1  # [win]
+    - if not exist %PREFIX%\\lib exit 1                          # [win]
+    - if not exist %PREFIX%\\plugify-module-lua.pmodule exit 1   # [win]
+
+about:
+  home: https://github.com/{{ environ.get('GITHUB_REPOSITORY', 'your-org/your-repo') }}
+  license: MIT
+  license_family: MIT
+  license_file: LICENSE
+  summary: Lua Language Module for Plugify
+  description: |
+    Lua Language Module provides Lua language support for the Plugify
+    plugin system, enabling dynamic loading and execution of Lua plugins.
+  doc_url: https://github.com/{{ environ.get('GITHUB_REPOSITORY', 'your-org/your-repo') }}/blob/main/README.md
+  dev_url: https://github.com/{{ environ.get('GITHUB_REPOSITORY', 'your-org/your-repo') }}
+
+extra:
+  recipe-maintainers:
+    - {{ environ.get('GITHUB_ACTOR', 'your-username') }}

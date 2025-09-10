@@ -1,3 +1,5 @@
+[![Русский](https://img.shields.io/badge/Русский-%F0%9F%87%B7%F0%9F%87%BA-green?style=for-the-badge)](README_ru.md)
+
 # Lua Language Module for Plugify
 
 The Plugify Lua Language Module is a powerful extension for the Plugify project, enabling developers to write plugins in Lua and seamlessly integrate them into the Plugify ecosystem. Whether you're a Lua enthusiast or wish to leverage the lightweight and fast scripting of Lua for your plugins, this module provides the flexibility and ease of use you need.
