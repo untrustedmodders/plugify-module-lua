@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.0](https://github.com/untrustedmodders/plugify-module-lua/compare/v1.0.4...v2.0.0) (2025-09-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* update for a new plugify
+
+### Features
+
+* update for a new plugify ([1bc0162](https://github.com/untrustedmodders/plugify-module-lua/commit/1bc0162e0773936d1056cf78888043814e56265d))
+
+
+### Bug Fixes
+
+* update clang format ([e6fb0da](https://github.com/untrustedmodders/plugify-module-lua/commit/e6fb0da53425b8c057dcb86591aa365f0329b044))
+
 ## [1.0.4](https://github.com/untrustedmodders/plugify-module-lua/compare/v1.0.3...v1.0.4) (2025-08-05)
 
 
