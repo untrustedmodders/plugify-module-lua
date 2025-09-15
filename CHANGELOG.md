@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.0...v2.0.1) (2025-09-15)
+
+
+### Bug Fixes
+
+* windows build ([5843bdd](https://github.com/untrustedmodders/plugify-module-lua/commit/5843bdd7c73cd9824faa5d7ed837699ae6ae3ad3))
+
 ## [2.0.0](https://github.com/untrustedmodders/plugify-module-lua/compare/v1.0.4...v2.0.0) (2025-09-14)
 
 
