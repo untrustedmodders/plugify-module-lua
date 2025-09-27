@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.6](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.5...v2.0.6) (2025-09-27)
+
+
+### Bug Fixes
+
+* change default build type ([523e4a5](https://github.com/untrustedmodders/plugify-module-lua/commit/523e4a5125c20c11276c94b2375be50c3b5e15a8))
+
 ## [2.0.5](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.4...v2.0.5) (2025-09-27)
 
 
