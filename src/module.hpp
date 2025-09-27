@@ -1,7 +1,5 @@
 #pragma once
 
-#include <map>
-#include <unordered_set>
 #include <plugify/call.hpp>
 #include <plugify/callback.hpp>
 #include <plugify/language_module.hpp>
@@ -20,6 +18,10 @@ extern "C" {
 #include <lauxlib.h>
 #include <lualib.h>
 }
+
+#include <map>
+#include <unordered_set>
+#include <exception>
 
 using namespace plugify;
 
