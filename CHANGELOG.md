@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.2...v2.0.3) (2025-09-27)
+
+
+### Bug Fixes
+
+* add missing include for clang ([18fdacc](https://github.com/untrustedmodders/plugify-module-lua/commit/18fdacc57812f11d8fab3021c4f638ff566e81bc))
+
 ## [2.0.2](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.1...v2.0.2) (2025-09-27)
 
 
