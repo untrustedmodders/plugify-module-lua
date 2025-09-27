@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.5](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.4...v2.0.5) (2025-09-27)
+
+
+### Bug Fixes
+
+* mac build ([10e3cf1](https://github.com/untrustedmodders/plugify-module-lua/commit/10e3cf19b5214e4a46234b8bd65fe5fe95fad552))
+
 ## [2.0.4](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.3...v2.0.4) (2025-09-27)
 
 
