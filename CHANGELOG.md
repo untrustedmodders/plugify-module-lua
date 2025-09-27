@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.4](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.3...v2.0.4) (2025-09-27)
+
+
+### Bug Fixes
+
+* clang build ([ca69527](https://github.com/untrustedmodders/plugify-module-lua/commit/ca69527384dbecabb65716f90b3a82c20f570e5a))
+
 ## [2.0.3](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.2...v2.0.3) (2025-09-27)
 
 
