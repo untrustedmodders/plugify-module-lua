@@ -1,7 +1,7 @@
 #include "module.hpp"
 #include <bitset>
 #include <filesystem>
-#include <module_export.h>
+#include <exception>
 
 #include <plg/string.hpp>
 #include <plg/any.hpp>
@@ -3467,9 +3467,9 @@ namespace lualm {
 	}
 
 	LuaLanguageModule g_lualm;
+}
 
-	extern "C"
-	LUALM_EXPORT ILanguageModule* GetLanguageModule() {
-		return &g_lualm;
-	}
+extern "C"
+LUALM_EXPORT ILanguageModule* GetLanguageModule() {
+	return &lualm::g_lualm;
 }

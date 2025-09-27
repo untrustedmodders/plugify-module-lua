@@ -21,7 +21,7 @@ extern "C" {
 
 #include <map>
 #include <unordered_set>
-#include <exception>
+#include <module_export.h>
 
 using namespace plugify;
 
@@ -182,3 +182,5 @@ namespace lualm {
 		int _originalRequireRef{LUA_REFNIL};
 	};
 }
+
+extern "C" LUALM_EXPORT ILanguageModule* GetLanguageModule();
