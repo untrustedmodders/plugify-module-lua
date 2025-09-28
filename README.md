@@ -22,10 +22,10 @@ The Plugify Lua Language Module is a powerful extension for the Plugify project,
 
 #### Option 1: Install via Plugify Plugin Manager
 
-You can install the Lua Language Module using the Plugify plugin manager by running the following command:
+You can install the Lua Language Module using the Mamba package manager by running the following command:
 
 ```bash
-plg install plugify-module-lua
+mamba install -n your_env_name -c https://untrustedmodders.github.io/plugify-module-lua/ plugify-module-lua
 ```
 
 #### Option 2: Manual Installation

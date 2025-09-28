@@ -22,10 +22,10 @@
 
 #### Вариант 1: Установка через менеджер плагинов Plugify
 
-Вы можете установить модуль языка Lua с помощью менеджера плагинов Plugify, выполнив команду:
+Вы можете установить модуль языка Lua с помощью менеджера пакетов Mamba, выполнив команду:
 
 ```bash
-plg install plugify-module-lua
+mamba install -n your_env_name -c https://untrustedmodders.github.io/plugify-module-lua/ plugify-module-lua
 ```
 
 #### Вариант 2: Ручная установка
