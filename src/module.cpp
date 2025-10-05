@@ -2954,11 +2954,11 @@ namespace lualm {
 	}
 
 	void LuaLanguageModule::GenerateEnum(LuaEnumSet& enumSet, const Property& paramType) {
-		if (const auto* prototype = paramType.GetPrototype()) {
+		if (const auto prototype = paramType.GetPrototype()) {
 			GenerateEnum(enumSet, *prototype);
 		}
 
-		const auto* enumerator = paramType.GetEnumerate();
+		const auto enumerator = paramType.GetEnumerate();
 		if (!enumerator) {
 			return;
 		}
