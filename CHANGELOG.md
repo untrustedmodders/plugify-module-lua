@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.7](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.6...v2.0.7) (2025-10-06)
+
+
+### Bug Fixes
+
+* disable asan in debug ([d85bc7d](https://github.com/untrustedmodders/plugify-module-lua/commit/d85bc7d3962d377897e4e9424855def64e824471))
+* improve san and debug symbols on windows ([1ffae4a](https://github.com/untrustedmodders/plugify-module-lua/commit/1ffae4ac466976bec7ce4b8720d8a34a5bbb121b))
+* update plugify ([0f69bb4](https://github.com/untrustedmodders/plugify-module-lua/commit/0f69bb430ffbfc5634f2bfa5015df05ccd361475))
+* update plugify ([3ab3798](https://github.com/untrustedmodders/plugify-module-lua/commit/3ab3798d6a88379069c42041c3e99688eeaf0f74))
+* update plugify ([2e0d17d](https://github.com/untrustedmodders/plugify-module-lua/commit/2e0d17d3277922b656fc5e3cf32c8cecec438196))
+
 ## [2.0.6](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.5...v2.0.6) (2025-09-27)
 
 
