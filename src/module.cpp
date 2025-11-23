@@ -784,6 +784,11 @@ namespace lualm {
 
 	using void_t = void*;
 
+	bool LuaLanguageModule::PushLuaObject() {
+		lua_pushnil(_L);
+		return true;
+	}
+
 	template<typename T>
 	bool LuaLanguageModule::PushLuaObject([[maybe_unused]] const T& value) {
 		static_assert(always_false_v<T>, "PushLuaObject specialization required");
@@ -1097,7 +1102,7 @@ namespace lualm {
 			if constexpr (is_vector_type_v<T>) {
 				result = PushLuaObjectList(val);
 			} else if constexpr (is_none_type_v<T>) {
-				lua_pushnil(_L);
+				result = PushLuaObject();
 			} else {
 				result = PushLuaObject(val);
 			}
@@ -2404,8 +2409,7 @@ namespace lualm {
 		func(a.params.Get(), &ret);
 		switch (retType.GetType()) {
 			case ValueType::Void: {
-				lua_pushnil(_L);
-				return true;
+				return PushLuaObject();
 			}
 			case ValueType::Bool: {
 				const bool val = ret.Get<bool>();
@@ -2953,9 +2957,9 @@ namespace lualm {
 		}
 	}
 
-	void LuaLanguageModule::GenerateEnum(LuaEnumSet& enumSet, const Property& paramType) {
+	void LuaLanguageModule::CreateEnumObject(LuaEnumSet& enumSet, const Property& paramType) {
 		if (const auto prototype = paramType.GetPrototype()) {
-			GenerateEnum(enumSet, *prototype);
+			CreateEnumObject(enumSet, *prototype);
 		}
 
 		const auto enumerator = paramType.GetEnumerate();
@@ -2981,10 +2985,10 @@ namespace lualm {
 		enumSet.emplace(name);
 	}
 
-	void LuaLanguageModule::GenerateEnum(LuaEnumSet& enumSet, const Method& method) {
-		GenerateEnum(enumSet, method.GetRetType());
+	void LuaLanguageModule::CreateEnumObject(LuaEnumSet& enumSet, const Method& method) {
+		CreateEnumObject(enumSet, method.GetRetType());
 		for (const auto& paramType : method.GetParamTypes()) {
-			GenerateEnum(enumSet, paramType);
+			CreateEnumObject(enumSet, paramType);
 		}
 	}
 
@@ -3008,7 +3012,7 @@ namespace lualm {
 		lua_pushboolean(_L, alias.IsOwner());
 		lua_rawseti(_L, -2, 2);
 	}
-	
+
 	void LuaLanguageModule::PushBinding(const LuaFunctionMap& functions, const Binding& binding) {
 		lua_createtable(_L, 5, 0);
 
@@ -3197,7 +3201,7 @@ namespace lualm {
 		// Register our custom require
 		lua_pushcfunction(_L, CustomRequire);
 		lua_setglobal(_L, "require");
-		
+
 		lua_getglobal(_L, "package"); // Stack: package
 		lua_getfield(_L, -1, "loaded"); // Stack: package, loaded
 		lua_getfield(_L, -1, "plugify"); // Stack: package, loaded, plugify
@@ -3207,10 +3211,10 @@ namespace lualm {
 			lua_pop(_L, 4);
 			return MakeError("bind_class_methods is not a function");
 		}
-		
+
 		// Stack: package, loaded, bind_class_methods
 		_bindClassFunc = luaL_ref(_L, LUA_REGISTRYINDEX); // Store bind_class_methods instance
-		
+
 		lua_getfield(_L, -1, "Vector2"); // Stack: package, loaded, plugify, Vector2
 		lua_getfield(_L, -1, "new"); // Stack: package, loaded, plugify, Vector2, Vector2.new
 
@@ -3583,7 +3587,7 @@ namespace lualm {
 
 		LuaEnumSet enums;
 		for (const auto& method : plugin.GetMethods()) {
-			GenerateEnum(enums, method);
+			CreateEnumObject(enums, method);
 		}
 
 		for (const auto& klass : plugin.GetClasses()) {
