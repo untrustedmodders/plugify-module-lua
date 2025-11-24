@@ -9,6 +9,9 @@
 #include <plugify/provider.hpp>
 #include <plugify/enum_object.hpp>
 #include <plugify/enum_value.hpp>
+#include <plugify/class.hpp>
+#include <plugify/binding.hpp>
+#include <plugify/alias.hpp>
 
 #include <plg/any.hpp>
 #include <plg/format.hpp>
@@ -55,6 +58,7 @@ namespace lualm {
 	using LuaInternalMap = std::unordered_map<LuaFunction, void*, plg::pair_hash<int, int>>;
 	using LuaExternalMap = std::unordered_map<void*, LuaFunction>;
 	using LuaEnumSet = std::unordered_set<std::string, plg::string_hash, std::equal_to<>>;
+	using LuaFunctionMap = std::unordered_map<std::string, lua_CFunction>;
 
 	struct LuaMethodData {
 		JitCallback jitCallback;
@@ -133,9 +137,13 @@ namespace lualm {
 	public:
 		void GenerateEnum(LuaEnumSet& enumSet, const Property& paramType);
 		void GenerateEnum(LuaEnumSet& enumSet, const Method& method);
+		/*void PushInvalidValue(ValueType handleType, std::string_view invalidValue);
+		void PushAlias(const Alias& alias);
+		void PushBinding(const LuaFunctionMap& functions, const Binding& binding);*/
+		void CreateClassObject(const LuaFunctionMap& functions, const Class& cls);
 		void TryCreateModule(const Extension& plugin, bool empty);
 		void ResolveRequiredModule(std::string_view moduleName);
-		std::vector<luaL_Reg> CreateFunctions(const Extension& plugin);
+		LuaFunctionMap CreateFunctions(const Extension& plugin);
 		lua_CFunction OpenModule(std::string filename);
 		void LogError();
 
@@ -145,6 +153,7 @@ namespace lualm {
 	private:
 		std::unique_ptr<Provider> _provider;
 		lua_State* _L{nullptr};
+		int _bindClassFunc{LUA_REFNIL};
 		int _vector2Ref{LUA_REFNIL};
 		int _vector3Ref{LUA_REFNIL};
 		int _vector4Ref{LUA_REFNIL};
@@ -167,7 +176,6 @@ namespace lualm {
 			std::string filename;
 		};
 		std::vector<LoadHolder> _loadFunctions;
-		std::vector<std::vector<luaL_Reg>> _createFunctions;
 		struct ExternalHolder {
 			JitCallback jitCallback;
 			JitCall jitCall;

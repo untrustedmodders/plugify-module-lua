@@ -2988,19 +2988,142 @@ namespace lualm {
 		}
 	}
 
-	std::vector<luaL_Reg> LuaLanguageModule::CreateFunctions(const Extension& plugin) {
+	void LuaLanguageModule::PushInvalidValue(ValueType handleType, std::string_view invalidValue) {
+		//TODO
+	}
+
+	void LuaLanguageModule::PushAlias(const Alias& alias) {
+		if (alias.GetName().empty()) {
+			lua_pushnil(_L);
+			return;
+		}
+
+		lua_createtable(_L, 2, 0);
+
+		// [1] = name
+		lua_pushstring(_L, alias.GetName().c_str());
+		lua_rawseti(_L, -2, 1);
+
+		// [2] = owner
+		lua_pushboolean(_L, alias.IsOwner());
+		lua_rawseti(_L, -2, 2);
+	}
+	
+	void LuaLanguageModule::PushBinding(const LuaFunctionMap& functions, const Binding& binding) {
+		lua_createtable(_L, 5, 0);
+
+		// [1] = name
+		lua_pushstring(_L, binding.GetName().c_str());
+		lua_rawseti(_L, -2, 1);
+
+		// [2] = func
+		auto it = functions.find(binding.GetMethod());
+		if (it != functions.end()) {
+			lua_pushcfunction(_L, it->second);
+		} else {
+			_provider->Log(std::format(LOG_PREFIX "Method function not found: {}", binding.GetMethod()), Severity::Fatal);
+			std::terminate();
+		}
+		lua_rawseti(_L, -2, 2);
+
+		// [3] = bindSelf
+		lua_pushboolean(_L, binding.IsBindSelf());
+		lua_rawseti(_L, -2, 3);
+
+		// [4] = paramAliases (array of Alias or nil)
+		const auto& paramAliases = binding.GetParamAliases();
+		lua_createtable(_L, static_cast<int>(paramAliases.size()), 0);
+		for (size_t j = 0; j < paramAliases.size(); ++j) {
+			PushAlias(paramAliases[j]);
+			lua_rawseti(_L, -2, static_cast<int>(j + 1));
+		}
+		lua_rawseti(_L, -2, 4);
+
+		// [5] = retAlias (Alias or nil)
+		PushAlias(binding.GetRetAlias());
+		lua_rawseti(_L, -2, 5);
+	}
+
+	void LuaLanguageModule::CreateClassObject(const LuaFunctionMap& functions, const Class& cls) {
+		const std::string& className = cls.GetName();
+
+		// Create class table
+		lua_newtable(_L);
+		lua_pushstring(_L, className.c_str());
+		lua_setfield(_L, -2, "__name");
+		int cls_table_idx = lua_gettop(_L);
+
+		// Call bind_class_methods(cls, constructors, destructor, methods, invalid_value)
+		lua_pushvalue(_L, _bindClassFunc); // Push bind_class_methods function
+
+		// Arg 1: cls (the class table)
+		lua_pushvalue(_L, cls_table_idx);
+
+		// Arg 2: constructors (array of functions)
+		const auto& constructors = cls.GetConstructors();
+		lua_createtable(_L, static_cast<int>(constructors.size()), 0);
+		for (size_t i = 0; i < constructors.size(); ++i) {
+			auto it = functions.find(constructors[i]);
+			if (it != functions.end()) {
+				lua_pushcfunction(_L, it->second);
+				lua_rawseti(_L, -2, static_cast<int>(i + 1));
+			} else {
+				_provider->Log(std::format(LOG_PREFIX "Constructor function not found: {}", constructors[i]), Severity::Fatal);
+				std::terminate();
+			}
+		}
+
+		// Arg 3: destructor (function or nil)
+		const std::string& destructor = cls.GetDestructor();
+		if (!destructor.empty()) {
+			auto it = functions.find(destructor);
+			if (it != functions.end()) {
+				lua_pushcfunction(_L, it->second);
+			} else {
+				_provider->Log(std::format(LOG_PREFIX "Destructor function not found: {}", destructor), Severity::Fatal);
+				std::terminate();
+			}
+		} else {
+			lua_pushnil(_L);
+		}
+
+		// Arg 4: methods (array of {name, func, bindSelf, paramAliases, retAlias})
+		const auto& bindings = cls.GetBindings();
+		lua_createtable(_L, static_cast<int>(bindings.size()), 0);
+		for (size_t i = 0; i < bindings.size(); ++i) {
+			PushBinding(functions, bindings[i]);
+			lua_rawseti(_L, -2, static_cast<int>(i + 1));
+		}
+
+		// Arg 5: invalid_value
+		PushInvalidValue(cls.GetHandleType(), cls.GetInvalidValue());
+
+		// Call: bind_class_methods(cls, constructors, destructor, methods, invalid_value)
+		if (lua_pcall(_L, 5, 1, 0) != LUA_OK) {
+			LogError();
+			_provider->Log(std::format(LOG_PREFIX "{}: call of 'bind_class_methods' failed", className), Severity::Error);
+			lua_pop(_L, 1);
+			lua_pop(_L, 1); // Pop class table
+			return;
+		}
+
+		lua_setfield(_L, -2, className.data());
+	}
+
+	LuaFunctionMap LuaLanguageModule::CreateFunctions(const Extension& plugin) {
 		const auto& methods = plugin.GetMethodsData();
 
-		std::vector<luaL_Reg> funcs;
-		funcs.reserve(methods.size() + 1);
+		LuaFunctionMap funcs;
+		funcs.reserve(methods.size());
 
 		for (const auto& [method, addr] : methods) {
 			JitCall call{};
 
 			const MemAddr callAddr = call.GetJitFunc(method, addr);
 			if (!callAddr) {
-				luaL_error(_L, "Lang module JIT failed to generate c++ call wrapper '%s'", call.GetError());
-				return funcs;
+				_provider->Log(std::format(LOG_PREFIX "Lang module JIT failed to generate c++ call wrapper '{}'", call.GetError()), Severity::Fatal);
+				std::terminate();
+				return {};
 			}
 
 			JitCallback callback{};
@@ -3012,16 +3135,16 @@ namespace lualm {
 			// Generate function --> int (MethodLuaCall*)(lua_State* L)
 			const MemAddr methodAddr = callback.GetJitFunc(sig, &method, &detail::ExternalCall, callAddr, false);
 			if (!methodAddr) {
-				luaL_error(_L, "Lang module JIT failed to generate c++ lua_CFunction wrapper '%s'", callback.GetError().data());
-				return funcs;
+				_provider->Log(std::format(LOG_PREFIX "Lang module JIT failed to generate c++ lua_CFunction wrapper '{}'", callback.GetError()), Severity::Fatal);
+				std::terminate();
+				return {};
 			}
 
 			_moduleFunctions.emplace_back(std::move(callback), std::move(call));
 
-			funcs.emplace_back(method.GetName().data(), methodAddr.RCast<lua_CFunction>());
+			funcs.emplace(method.GetName(), methodAddr.RCast<lua_CFunction>());
 		}
 
-		funcs.emplace_back(nullptr, nullptr); // End of functions
 		return funcs;
 	}
 
@@ -3074,37 +3197,45 @@ namespace lualm {
 		// Register our custom require
 		lua_pushcfunction(_L, CustomRequire);
 		lua_setglobal(_L, "require");
-
-		// Create a Vector2 instance
+		
 		lua_getglobal(_L, "package"); // Stack: package
 		lua_getfield(_L, -1, "loaded"); // Stack: package, loaded
 		lua_getfield(_L, -1, "plugify"); // Stack: package, loaded, plugify
 
+		lua_getfield(_L, -1, "bind_class_methods");
+		if (!lua_isfunction(_L, -1)) {
+			lua_pop(_L, 4);
+			return MakeError("bind_class_methods is not a function");
+		}
+		
+		// Stack: package, loaded, bind_class_methods
+		_bindClassFunc = luaL_ref(_L, LUA_REGISTRYINDEX); // Store bind_class_methods instance
+		
 		lua_getfield(_L, -1, "Vector2"); // Stack: package, loaded, plugify, Vector2
 		lua_getfield(_L, -1, "new"); // Stack: package, loaded, plugify, Vector2, Vector2.new
 
-		// Stack: package, loaded, vector, Vector2, vector2_instance
+		// Stack: package, loaded, Vector2, vector2_instance
 		_vector2Ref = luaL_ref(_L, LUA_REGISTRYINDEX); // Store Vector2 instance
 		lua_pop(_L, 1);
 
 		lua_getfield(_L, -1, "Vector3"); // Stack: package, loaded, plugify, Vector3
 		lua_getfield(_L, -1, "new"); // Stack: package, loaded, plugify, Vector3, Vector3.new
 
-		// Stack: package, loaded, vector, Vector3, vector3_instance
+		// Stack: package, loaded, Vector3, vector3_instance
 		_vector3Ref = luaL_ref(_L, LUA_REGISTRYINDEX); // Store Vector3 instance
 		lua_pop(_L, 1);
 
 		lua_getfield(_L, -1, "Vector4"); // Stack: package, loaded, plugify, Vector4
 		lua_getfield(_L, -1, "new"); // Stack: package, loaded, plugify, Vector4, Vector4.new
 
-		// Stack: package, loaded, vector, Vector4, vector4_instance
+		// Stack: package, loaded, Vector4, vector4_instance
 		_vector4Ref = luaL_ref(_L, LUA_REGISTRYINDEX); // Store Vector2 instance
 		lua_pop(_L, 1);
 
 		lua_getfield(_L, -1, "Matrix4x4"); // Stack: package, loaded, plugify, Matrix4x4
 		lua_getfield(_L, -1, "new"); // Stack: package, loaded, plugify, Matrix4x4, Matrix4x4.new
 
-		// Stack: package, loaded, vector, Matrix4x4, matrix4x4_instance
+		// Stack: package, loaded, Matrix4x4, matrix4x4_instance
 		_matrix4x4Ref = luaL_ref(_L, LUA_REGISTRYINDEX); // Store Matrix4x4 instance
 		lua_pop(_L, 1);
 
@@ -3119,6 +3250,8 @@ namespace lualm {
 
 		luaL_unref(_L, LUA_REGISTRYINDEX, _originalRequireRef);
 		_originalRequireRef = LUA_NOREF;
+		luaL_unref(_L, LUA_REGISTRYINDEX, _bindClassFunc);
+		_bindClassFunc = LUA_NOREF;
 		luaL_unref(_L, LUA_REGISTRYINDEX, _vector2Ref);
 		_vector2Ref = LUA_NOREF;
 		luaL_unref(_L, LUA_REGISTRYINDEX, _vector3Ref);
@@ -3148,7 +3281,6 @@ namespace lualm {
 		_luaMethods.clear();
 		_moduleFunctions.clear();
 		_loadFunctions.clear();
-		_createFunctions.clear();
 
 		lua_close(_L);
 		_L = nullptr;
@@ -3443,21 +3575,20 @@ namespace lualm {
 		// load
 		luaL_requiref(_L, modname, &LoadEmpty, 0);
 
-		auto funcs = CreateFunctions(plugin);
-		for (const auto& [name, func]: funcs) {
-			if (name == nullptr) {
-				continue; // Skip end marker
-			}
+		LuaFunctionMap funcs = CreateFunctions(plugin);
+		for (const auto& [name, func] : funcs) {
 			lua_pushcfunction(_L, func);
-			lua_setfield(_L, -2, name);// module[func_name] = func
+			lua_setfield(_L, -2, name.data()); // module[func_name] = func
 		}
 
 		LuaEnumSet enums;
-		for (const auto& [method, _] : plugin.GetMethodsData()) {
+		for (const auto& method : plugin.GetMethods()) {
 			GenerateEnum(enums, method);
 		}
 
-		_createFunctions.emplace_back(std::move(funcs));
+		for (const auto& klass : plugin.GetClasses()) {
+			CreateClassObject(funcs, klass);
+		}
 
 		lua_pop(_L, 1);
 	}
