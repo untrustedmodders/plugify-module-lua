@@ -796,12 +796,6 @@ namespace lualm {
 	}
 
 	template<>
-	bool LuaLanguageModule::PushLuaObject([[maybe_unused]] const std::nullptr_t& value) {
-		lua_pushnil(_L);
-		return true;
-	}
-
-	template<>
 	bool LuaLanguageModule::PushLuaObject(const bool& value) {
 		lua_pushboolean(_L, value);
 		return true;
@@ -2967,22 +2961,22 @@ namespace lualm {
 			return;
 		}
 
-		const auto& name = enumerator->GetName();
-		const auto& values = enumerator->GetValues();
-		if (enumSet.contains(name) || values.empty()) {
+		const auto& enumName = enumerator->GetName();
+		const auto& enumValues = enumerator->GetValues();
+		if (enumSet.contains(enumName) || enumValues.empty()) {
 			return;
 		}
 
 		lua_newtable(_L);
 
-		for (const auto& value : values) {
-			lua_pushinteger(_L, value.GetValue());
-			lua_setfield(_L, -2, value.GetName().data());
+		for (const auto& enumValue : enumValues) {
+			lua_pushinteger(_L, enumValue.GetValue());
+			lua_setfield(_L, -2, enumValue.GetName().data());
 		}
 
-		lua_setfield(_L, -2, name.data());
+		lua_setfield(_L, -2, enumName.data());
 
-		enumSet.emplace(name);
+		enumSet.emplace(enumName);
 	}
 
 	void LuaLanguageModule::CreateEnumObject(LuaEnumSet& enumSet, const Method& method) {
@@ -2992,32 +2986,71 @@ namespace lualm {
 		}
 	}
 
-	void LuaLanguageModule::PushInvalidValue(ValueType handleType, std::string_view invalidValue) {
-		//TODO
+	bool LuaLanguageModule::PushInvalidValue(ValueType handleType, std::string_view invalidValue) {
+		if (!invalidValue.empty()) {
+			// Single numeric parse path
+			auto parseInteger = [&]() -> std::optional<int64_t> {
+				return plg::cast_to<int64_t>(invalidValue);
+			};
+			auto parseFloat = [&]() -> std::optional<double> {
+				return plg::cast_to<double>(invalidValue);
+			};
+
+			const bool isFloat = invalidValue.contains('.') ||
+								 handleType == ValueType::Float ||
+								 handleType == ValueType::Double;
+
+			if (isFloat) {
+				if (auto v = parseFloat()) return PushLuaObject(*v);
+			} else {
+				if (auto v = parseInteger()) return PushLuaObject(*v);
+			}
+
+			return PushLuaObject(invalidValue);
+		}
+
+		switch (handleType) {
+			case ValueType::Bool:      return PushLuaObject(false);
+			case ValueType::Int8:      return PushLuaObject(int8_t{0});
+			case ValueType::Int16:     return PushLuaObject(int16_t{0});
+			case ValueType::Int32:     return PushLuaObject(int32_t{0});
+			case ValueType::Int64:     return PushLuaObject(int64_t{0});
+			case ValueType::UInt8:     return PushLuaObject(uint8_t{0});
+			case ValueType::UInt16:    return PushLuaObject(uint16_t{0});
+			case ValueType::UInt32:    return PushLuaObject(uint32_t{0});
+			case ValueType::UInt64:    return PushLuaObject(uint64_t{0});
+			case ValueType::Float:     return PushLuaObject(float{0});
+			case ValueType::Double:    return PushLuaObject(double{0});
+			case ValueType::Pointer:   return PushLuaObject(static_cast<void*>(nullptr));
+			case ValueType::String:    return PushLuaObject(std::string_view(""));
+			default:                   return PushLuaObject();
+		}
 	}
 
-	void LuaLanguageModule::PushAlias(const Alias& alias) {
+	bool LuaLanguageModule::PushAliasObject(const Alias& alias) {
 		if (alias.GetName().empty()) {
 			lua_pushnil(_L);
-			return;
+			return false;
 		}
 
 		lua_createtable(_L, 2, 0);
 
 		// [1] = name
-		lua_pushstring(_L, alias.GetName().c_str());
+		PushLuaObject(alias.GetName());
 		lua_rawseti(_L, -2, 1);
 
 		// [2] = owner
-		lua_pushboolean(_L, alias.IsOwner());
+		PushLuaObject(alias.IsOwner());
 		lua_rawseti(_L, -2, 2);
+
+		return true;
 	}
 
-	void LuaLanguageModule::PushBinding(const LuaFunctionMap& functions, const Binding& binding) {
+	bool LuaLanguageModule::PushBindingObject(const LuaFunctionMap& functions, const Binding& binding) {
 		lua_createtable(_L, 5, 0);
 
 		// [1] = name
-		lua_pushstring(_L, binding.GetName().c_str());
+		PushLuaObject(binding.GetName());
 		lua_rawseti(_L, -2, 1);
 
 		// [2] = func
@@ -3031,21 +3064,23 @@ namespace lualm {
 		lua_rawseti(_L, -2, 2);
 
 		// [3] = bindSelf
-		lua_pushboolean(_L, binding.IsBindSelf());
+		PushLuaObject(binding.IsBindSelf());
 		lua_rawseti(_L, -2, 3);
 
 		// [4] = paramAliases (array of Alias or nil)
 		const auto& paramAliases = binding.GetParamAliases();
 		lua_createtable(_L, static_cast<int>(paramAliases.size()), 0);
 		for (size_t j = 0; j < paramAliases.size(); ++j) {
-			PushAlias(paramAliases[j]);
+			PushAliasObject(paramAliases[j]);
 			lua_rawseti(_L, -2, static_cast<int>(j + 1));
 		}
 		lua_rawseti(_L, -2, 4);
 
 		// [5] = retAlias (Alias or nil)
-		PushAlias(binding.GetRetAlias());
+		PushAliasObject(binding.GetRetAlias());
 		lua_rawseti(_L, -2, 5);
+
+		return true;
 	}
 
 	void LuaLanguageModule::CreateClassObject(const LuaFunctionMap& functions, const Class& cls) {
@@ -3053,12 +3088,12 @@ namespace lualm {
 
 		// Create class table
 		lua_newtable(_L);
-		lua_pushstring(_L, className.c_str());
+		PushLuaObject(className);
 		lua_setfield(_L, -2, "__name");
 		int cls_table_idx = lua_gettop(_L);
 
 		// Call bind_class_methods(cls, constructors, destructor, methods, invalid_value)
-		lua_pushvalue(_L, _bindClassFunc); // Push bind_class_methods function
+		lua_rawgeti(_L, LUA_REGISTRYINDEX, _bindClassFunc);
 
 		// Arg 1: cls (the class table)
 		lua_pushvalue(_L, cls_table_idx);
@@ -3095,7 +3130,7 @@ namespace lualm {
 		const auto& bindings = cls.GetBindings();
 		lua_createtable(_L, static_cast<int>(bindings.size()), 0);
 		for (size_t i = 0; i < bindings.size(); ++i) {
-			PushBinding(functions, bindings[i]);
+			PushBindingObject(functions, bindings[i]);
 			lua_rawseti(_L, -2, static_cast<int>(i + 1));
 		}
 
@@ -3127,7 +3162,6 @@ namespace lualm {
 			if (!callAddr) {
 				_provider->Log(std::format(LOG_PREFIX "Lang module JIT failed to generate c++ call wrapper '{}'", call.GetError()), Severity::Fatal);
 				std::terminate();
-				return {};
 			}
 
 			JitCallback callback{};
@@ -3141,7 +3175,6 @@ namespace lualm {
 			if (!methodAddr) {
 				_provider->Log(std::format(LOG_PREFIX "Lang module JIT failed to generate c++ lua_CFunction wrapper '{}'", callback.GetError()), Severity::Fatal);
 				std::terminate();
-				return {};
 			}
 
 			_moduleFunctions.emplace_back(std::move(callback), std::move(call));
@@ -3590,8 +3623,19 @@ namespace lualm {
 			CreateEnumObject(enums, method);
 		}
 
-		for (const auto& klass : plugin.GetClasses()) {
-			CreateClassObject(funcs, klass);
+		for (const auto& class_ : plugin.GetClasses()) {
+			CreateClassObject(funcs, class_);
+		}
+
+		// stack top: module table
+		lua_pushnil(_L);                 // first key
+		while (lua_next(_L, -2) != 0) {  // -2: table, -1: value, -2: key
+			const char* k = lua_tostring(_L, -2);
+			int t = lua_type(_L, -1);
+
+			printf("%s : %s\n", k, lua_typename(_L, t));
+
+			lua_pop(_L, 1);             // pop value, keep key for next
 		}
 
 		lua_pop(_L, 1);

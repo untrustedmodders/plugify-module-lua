@@ -99,6 +99,7 @@ namespace lualm {
 		std::optional<T> ValueFromNumberObject(int arg);
 		template<typename T>
 		std::optional<plg::vector<T>> ArrayFromObject(int arg);
+		bool PushLuaObject();
 		template<typename T>
 		bool PushLuaObject(const T& value);
 		template<typename T>
@@ -134,13 +135,14 @@ namespace lualm {
 		bool PushObjectAsRefParam(const Property& paramType, int arg, ArgsScope& a);
 		bool StorageValueToObject(const Property& paramType, const ArgsScope& a, size_t index);
 
-	public:
-		void GenerateEnum(LuaEnumSet& enumSet, const Property& paramType);
-		void GenerateEnum(LuaEnumSet& enumSet, const Method& method);
-		/*void PushInvalidValue(ValueType handleType, std::string_view invalidValue);
-		void PushAlias(const Alias& alias);
-		void PushBinding(const LuaFunctionMap& functions, const Binding& binding);*/
+		bool PushInvalidValue(ValueType handleType, std::string_view invalidValue);
+		bool PushAliasObject(const Alias& alias);
+		bool PushBindingObject(const LuaFunctionMap& functions, const Binding& binding);
 		void CreateClassObject(const LuaFunctionMap& functions, const Class& cls);
+		void CreateEnumObject(LuaEnumSet& enumSet, const Property& paramType);
+		void CreateEnumObject(LuaEnumSet& enumSet, const Method& method);
+
+	public:
 		void TryCreateModule(const Extension& plugin, bool empty);
 		void ResolveRequiredModule(std::string_view moduleName);
 		LuaFunctionMap CreateFunctions(const Extension& plugin);

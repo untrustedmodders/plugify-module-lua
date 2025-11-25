@@ -2353,6 +2353,261 @@ function M.reverse_call_func_enum()
     return result
 end
 
+local function log(message)
+    -- Only logs in debug mode
+    if os.getenv('VERBOSE') then
+        print(message)
+    end
+end
+
+function M.basic_lifecycle()
+    log("TEST 1: Basic Lifecycle")
+    log("───────────────────────")
+
+    local initial_alive = master.ResourceHandle.GetAliveCount()
+    local initial_created = master.ResourceHandle.GetTotalCreated()
+
+    do
+        local resource <close> = master:ResourceHandle(1, "Test1")
+        log(string.format("✓ Created ResourceHandle ID: %d", resource:GetId()))
+        log(string.format("✓ Alive count increased: %d", master.ResourceHandle.GetAliveCount()))
+    end
+
+    local final_alive = master.ResourceHandle.GetAliveCount()
+    local final_created = master.ResourceHandle.GetTotalCreated()
+    local final_destroyed = master.ResourceHandle.GetTotalDestroyed()
+
+    log(string.format("✓ Destructor called, alive count: %d", final_alive))
+    log(string.format("✓ Total created: %d", final_created - initial_created))
+    log(string.format("✓ Total destroyed: %d", final_destroyed))
+
+    if final_alive == initial_alive and final_created == final_destroyed then
+        log("✓ TEST 1 PASSED: Lifecycle working correctly\n")
+        return "true"
+    else
+        log("✗ TEST 1 FAILED: Lifecycle mismatch!\n")
+        return "false"
+    end
+end
+
+function M.state_management()
+    log("TEST 2: State Management")
+    log("────────────────────────")
+
+    do
+        local resource <close> = master:ResourceHandle(2, "StateTest")
+
+        resource:IncrementCounter()
+        resource:IncrementCounter()
+        resource:IncrementCounter()
+        local counter = resource:GetCounter()
+        log(string.format("✓ Counter incremented 3 times: %d", counter))
+
+        resource:SetName("StateTestModified")
+        local new_name = resource:GetName()
+        log(string.format("✓ Name changed to: %s", new_name))
+
+        resource:AddData(1.1)
+        resource:AddData(2.2)
+        resource:AddData(3.3)
+        local data = resource:GetData()
+        log(string.format("✓ Added %d data points", #data))
+
+        if counter == 3 and new_name == "StateTestModified" and #data == 3 then
+            log("✓ TEST 2 PASSED: State management working\n")
+            return "true"
+        else
+            log("✗ TEST 2 FAILED: State not preserved!\n")
+            return "false"
+        end
+    end
+end
+
+function M.multiple_instances()
+    log("TEST 3: Multiple Instances")
+    log("──────────────────────────")
+
+    local before_alive = master.ResourceHandle.GetAliveCount()
+
+    do
+        local r1 <close> = master:ResourceHandle(10, "Instance1")
+        local r2 <close> = master:ResourceHandle(20, "Instance2")
+        local r3 <close> = master:ResourceHandle()
+
+        local during_alive = master.ResourceHandle.GetAliveCount()
+        log(string.format("✓ Created 3 instances, alive: %d", during_alive))
+        log(string.format("✓ R1 ID: %d, R2 ID: %d, R3 ID: %d",
+            r1:GetId(), r2:GetId(), r3:GetId()))
+
+        if during_alive - before_alive == 3 then
+            log("✓ All 3 instances tracked correctly")
+        end
+    end
+
+    local after_alive = master.ResourceHandle.GetAliveCount()
+
+    if after_alive == before_alive then
+        log("✓ TEST 3 PASSED: All instances destroyed properly\n")
+        return "true"
+    else
+        log(string.format("✗ TEST 3 FAILED: Leak detected! Before: %d, After: %d\n",
+            before_alive, after_alive))
+        return "false"
+    end
+end
+
+function M.counter_without_destructor()
+    log("TEST 4: Counter (No Destructor)")
+    log("────────────────────────────────")
+
+    local counter = master:Counter(100)
+    log(string.format("✓ Created Counter with value: %d", counter:GetValue()))
+
+    counter:Increment()
+    counter:Increment()
+    counter:Add(50)
+    local value = counter:GetValue()
+    log(string.format("✓ After operations, value: %d", value))
+
+    local is_positive = counter:IsPositive()
+    log(string.format("✓ Is positive: %s", tostring(is_positive)))
+
+    if value == 152 and is_positive then
+        log("✓ TEST 4 PASSED: Counter operations working\n")
+        return "true"
+    else
+        log("✗ TEST 4 FAILED: Counter operations incorrect\n")
+        return "false"
+    end
+end
+
+function M.static_methods()
+    log("TEST 5: Static Methods")
+    log("──────────────────────")
+
+    local alive = master.ResourceHandle.GetAliveCount()
+    local created = master.ResourceHandle.GetTotalCreated()
+    local destroyed = master.ResourceHandle.GetTotalDestroyed()
+    log(string.format("✓ ResourceHandle stats - Alive: %d, Created: %d, Destroyed: %d",
+        alive, created, destroyed))
+
+    local cmp1 = master.Counter.Compare(100, 50)
+    local cmp2 = master.Counter.Compare(50, 100)
+    local cmp3 = master.Counter.Compare(50, 50)
+    log(string.format("✓ Counter.Compare(100, 50) = %d (expected 1)", cmp1))
+    log(string.format("✓ Counter.Compare(50, 100) = %d (expected -1)", cmp2))
+    log(string.format("✓ Counter.Compare(50, 50) = %d (expected 0)", cmp3))
+
+    local sum_result = master.Counter.Sum({1, 2, 3, 4, 5})
+    log(string.format("✓ Counter.Sum([1,2,3,4,5]) = %d (expected 15)", sum_result))
+
+    if cmp1 == 1 and cmp2 == -1 and cmp3 == 0 and sum_result == 15 then
+        log("✓ TEST 5 PASSED: Static methods working\n")
+        return "true"
+    else
+        log("✗ TEST 5 FAILED: Static methods incorrect\n")
+        return "false"
+    end
+end
+
+function M.memory_leak_detection()
+    log("TEST 6: Memory Leak Detection")
+    log("──────────────────────────────")
+
+    local before_alive = master.ResourceHandle.GetAliveCount()
+
+    do
+        local leaked = master:ResourceHandle(999, "IntentionalLeak")
+        log(string.format("✓ Created resource ID: %d", leaked:GetId()))
+        leaked = nil
+    end
+
+    collectgarbage("collect")
+
+    local after_alive = master.ResourceHandle.GetAliveCount()
+
+    log(string.format("✓ Before leak test: %d alive", before_alive))
+    log(string.format("✓ After GC: %d alive", after_alive))
+
+    if after_alive == before_alive then
+        log("✓ TEST 6 PASSED: Finalizer cleaned up leaked resource\n")
+        return "true"
+    else
+        log("✗ TEST 6 FAILED: Resource still alive (will be cleaned at plugin shutdown)\n")
+        return "false"
+    end
+end
+
+function M.exception_handling()
+    log("TEST 7: Exception Handling")
+    log("──────────────────────────")
+
+    local resource = master:ResourceHandle(777, "ExceptionTest")
+    resource:__close()
+
+    local success, err = pcall(function()
+        resource:GetId()
+    end)
+
+    if not success then
+        log(string.format("✓ Caught expected exception: %s", tostring(err)))
+        log("✓ TEST 7 PASSED: Exception handling working\n")
+        return "true"
+    else
+        log("✗ TEST 7 FAILED: No exception thrown!\n")
+        return "false"
+    end
+end
+
+function M.ownership_transfer()
+    log("TEST 8: Ownership Transfer (get + release)")
+    log("─────────────────────────────────────────")
+
+    local initial_alive = master.ResourceHandle.GetAliveCount()
+    local initial_created = master.ResourceHandle.GetTotalCreated()
+
+    local resource = master:ResourceHandle(42, "OwnershipTest")
+    log(string.format("✓ Created ResourceHandle ID: %d", resource:GetId()))
+
+    -- Get internal wrapper (simulate internal pointer access)
+    local wrapper = resource:get()
+    log(string.format("✓ get() returned internal wrapper: %s", tostring(wrapper)))
+
+    -- Release ownership
+    local handle = resource:release()
+    log(string.format("✓ release() returned handle: %s", tostring(handle)))
+
+    if wrapper ~= handle then
+        log(string.format("✗ TEST 8 FAILED: get() did not return internal wrapper, got %s",
+            type(wrapper)))
+        return "false"
+    end
+
+    local success, err = pcall(function()
+        resource:GetId()
+    end)
+
+    if success then
+        log("✗ TEST 8 FAILED: ResourceHandle still accessible after release()")
+        return "false"
+    else
+        log("✓ ResourceHandle is invalid after release()")
+    end
+
+    -- Check that handle is now owned externally and alive count updated correctly
+    local alive_after_release = master.ResourceHandle.GetAliveCount()
+    if alive_after_release ~= initial_alive + 1 then
+        log(string.format("✗ TEST 8 FAILED: Alive count mismatch after release. Expected %d, got %d", 
+            initial_alive + 1, alive_after_release))
+        return "false"
+    end
+
+    master:ResourceHandleDestroy(handle)
+
+    log("✓ TEST 8 PASSED: Ownership transfer working correctly\n")
+    return "true"
+end
+
 local reverse_test = {
     ["NoParamReturnVoid"] = M.reverse_no_param_return_void,
     ["NoParamReturnBool"] = M.reverse_no_param_return_bool,
@@ -2493,6 +2748,14 @@ local reverse_test = {
     ["CallFunc32"] = M.reverse_call_func32,
     ["CallFunc33"] = M.reverse_call_func33,
     ["CallFuncEnum"] = M.reverse_call_func_enum,
+    ["ClassBasicLifecycle"] = M.basic_lifecycle,
+    ["ClassStateManagement"] = M.state_management,
+    ["ClassMultipleInstances"] = M.multiple_instances,
+    ["ClassCounterWithoutDestructor"] = M.counter_without_destructor,
+    ["ClassStaticMethods"] = M.static_methods,
+    ["ClassMemoryLeakDetection"] = M.memory_leak_detection,
+    ["ClassExceptionHandling"] = M.exception_handling,
+    ["ClassOwnershipTransfer"] = M.ownership_transfer,
 }
 
 -- Function to call the test function by name and handle its result

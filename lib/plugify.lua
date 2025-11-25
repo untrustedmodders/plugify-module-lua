@@ -779,10 +779,250 @@ function Matrix4x4.__eq(a, b)
     return true
 end
 
+local function makeEnum(def)
+    local E = { __enum_tag = {} }
+
+    local mt = {
+        __eq = function(a, b)
+            if type(b) == "table" and getmetatable(b) and b.__enum_tag == a.__enum_tag then
+                return a.value == b.value
+            else
+                return a.value == b
+            end
+        end,
+        __enum_tag = E.__enum_tag
+    }
+
+    for k, v in pairs(def) do
+        E[k] = setmetatable({ value = v }, mt)
+    end
+
+    -- Add is() method to the enum
+    function E.is(value)
+        local xmt = getmetatable(value)
+        return xmt and xmt .__enum_tag == E.__enum_tag
+    end
+
+    return setmetatable(E, {
+        __newindex = function()
+            error("enum is locked")
+        end
+    })
+end
+
+-- Ownership enum equivalent
+local Ownership = makeEnum {
+    OWNED = true,
+    BORROWED = false
+}
+
+class_registry = {}
+
+-- Main function to bind methods to a class
+local function bind_class_methods(cls, constructors, destructor, methods, invalid_value)
+    invalid_value = invalid_value or 0
+
+    local class_name = cls.__name or "UnknownClass"
+
+    -- Ensure __index points to cls for method lookup
+    cls.__index = cls
+
+    -- Constructor (new function)
+    function cls.new(...)
+        local self = setmetatable({}, cls)
+
+        -- Initialize to invalid state first
+        self._handle = invalid_value
+        self._owned = Ownership.BORROWED
+
+        local args = {...}
+
+        -- Check if this is handle + ownership construction
+        -- Pattern: ClassName.new(handle_value, Ownership.OWNED/BORROWED)
+        if #args >= 2 and Ownership.is(args[2]) then
+            self._handle = args[1]
+            self._owned = args[2]
+            return self
+        end
+
+        -- Constructor call mode
+        if #constructors == 0 then
+            error(class_name .. " requires handle and ownership for construction")
+        end
+
+        -- Try constructors
+        local last_error = nil
+        for _, constructor in ipairs(constructors) do
+            local success, result = pcall(constructor, table.unpack(args))
+            if success then
+                self._handle = result
+                self._owned = Ownership.OWNED
+                return self
+            else
+                last_error = result
+            end
+        end
+
+        -- All constructors failed
+        if last_error then
+            error(last_error)
+        else
+            error("No constructor matched the arguments for " .. class_name)
+        end
+    end
+
+    -- close method
+    function cls:close()
+        if not self._handle then
+            return
+        end
+
+        if self._handle ~= invalid_value and self._owned == Ownership.OWNED then
+            if destructor then
+                destructor(self._handle)
+            end
+        end
+        self._handle = invalid_value
+        self._owned = Ownership.BORROWED
+    end
+
+    -- <close> metamethod for Lua 5.4 to-be-closed variables
+    cls.__close = function(self)
+        self:close()
+    end
+
+    -- __gc metamethod as a safety net (called by garbage collector)
+    cls.__gc = function(self)
+        self:close()
+    end
+
+    -- release method
+    function cls:release()
+        if not self._handle then
+            return invalid_value
+        end
+        local tmp = self._handle
+        self._handle = invalid_value
+        self._owned = Ownership.BORROWED
+        return tmp
+    end
+
+    -- reset method
+    function cls:reset()
+        self:close()
+    end
+
+    -- get method
+    function cls:get()
+        if not self._handle then
+            return invalid_value
+        end
+        return self._handle
+    end
+
+    -- valid method
+    function cls:valid()
+        if not self._handle then
+            return false
+        end
+        return self._handle ~= invalid_value
+    end
+
+    _G.class_registry[class_name] = cls
+
+    -- Helper to wrap return values
+    local function wrap_return(result, ret_alias)
+        if ret_alias and #ret_alias >= 2 then
+            local ret_class_name = ret_alias[1]
+            local owner = ret_alias[2]
+            local ownership = owner and Ownership.OWNED or Ownership.BORROWED
+
+            local ret_class = _G.class_registry[ret_class_name]
+            if not ret_class then
+                -- Try to get from global environment
+                ret_class = _G[ret_class_name]
+                if ret_class then
+                    _G.class_registry[ret_class_name] = ret_class
+                end
+            end
+
+            if ret_class and result ~= invalid_value then
+                return ret_class.new(result, ownership)
+            elseif result == invalid_value then
+                return nil
+            end
+        end
+
+        return result
+    end
+
+    -- Helper to process parameter aliases
+    local function process_param_aliases(args, param_aliases)
+        local args_list = {}
+        for i, v in ipairs(args) do
+            args_list[i] = v
+        end
+
+        for i, alias_info in ipairs(param_aliases) do
+            if alias_info and #alias_info >= 2 and args_list[i] then
+                local alias_name = alias_info[1]
+                local owner = alias_info[2]
+
+                if alias_name and args_list[i] ~= nil then
+                    local arg = args_list[i]
+                    if type(arg) == "table" and arg.release and arg.get then
+                        if owner then
+                            args_list[i] = arg:release()
+                        else
+                            args_list[i] = arg:get()
+                        end
+                    end
+                end
+            end
+        end
+
+        return args_list
+    end
+
+    -- Process methods
+    for _, method_info in ipairs(methods) do
+        local method_name = method_info[1]
+        local func = method_info[2]
+        local bind_self = method_info[3]
+        local param_aliases = method_info[4] or {}
+        local ret_alias = method_info[5]
+
+        if not bind_self then
+            -- Static method
+            cls[method_name] = function(...)
+                local args = {...}
+                local args_list = process_param_aliases(args, param_aliases)
+                local result = func(table.unpack(args_list))
+                return wrap_return(result, ret_alias)
+            end
+        else
+            -- Instance method
+            cls[method_name] = function(self, ...)
+                if not self._handle or self._handle == invalid_value then
+                    error(class_name .. " handle is closed or not initialized")
+                end
+
+                local args = {...}
+                local args_list = process_param_aliases(args, param_aliases)
+                local result = func(self._handle, table.unpack(args_list))
+                return wrap_return(result, ret_alias)
+            end
+        end
+    end
+
+    return cls
+end
+
 return {
     Plugin = Plugin,
     Vector2 = Vector2,
     Vector3 = Vector3,
     Vector4 = Vector4,
-    Matrix4x4 = Matrix4x4
+    Matrix4x4 = Matrix4x4,
+    bind_class_methods = bind_class_methods
 }
