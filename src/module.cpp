@@ -441,7 +441,6 @@ namespace lualm {
 				}
 				lua_pop(_L, 2);
 			}
-			// Table
 			return { LuaAbstractType::Table, "table" };
 		}
 		return { static_cast<LuaAbstractType>(type), lua_typename(_L, type) };
@@ -1014,7 +1013,6 @@ namespace lualm {
 			return std::nullopt;
 		}
 
-		// Create a reference to the Lua function value to prevent GC
 		lua_pushvalue(_L, arg);
 		int funcRef = luaL_ref(_L, LUA_REGISTRYINDEX);
 		auto funcObj = std::make_unique<LuaFunction>(LUA_NOREF, funcRef);
@@ -1125,6 +1123,7 @@ namespace lualm {
 	void LuaLanguageModule::SetFallbackReturn(ValueType retType, ReturnSlot& ret) {
 		switch (retType) {
 			case ValueType::Void:
+				break;
 			case ValueType::Bool:
 			case ValueType::Char8:
 			case ValueType::Char16:
@@ -3089,7 +3088,7 @@ namespace lualm {
 		// Create class table
 		lua_newtable(_L);
 		PushLuaObject(className);
-		lua_setfield(_L, -2, "__name");
+		lua_setfield(_L, -2, "__type");
 		int cls_table_idx = lua_gettop(_L);
 
 		// Call bind_class_methods(cls, constructors, destructor, methods, invalid_value)
@@ -3146,7 +3145,10 @@ namespace lualm {
 			return;
 		}
 
-		lua_setfield(_L, -2, className.data());
+		// Stack: [module_table, cls_table, result]
+		// Remove cls_table and set result in module_table
+		lua_remove(_L, -2); // Stack: [module_table, result]
+		lua_setfield(_L, -2, className.data()); // module_table[className] = result
 	}
 
 	LuaFunctionMap LuaLanguageModule::CreateFunctions(const Extension& plugin) {
@@ -3623,20 +3625,22 @@ namespace lualm {
 			CreateEnumObject(enums, method);
 		}
 
-		for (const auto& class_ : plugin.GetClasses()) {
-			CreateClassObject(funcs, class_);
+		for (const auto& cls : plugin.GetClasses()) {
+			CreateClassObject(funcs, cls);
 		}
 
+#if VERBOSE
 		// stack top: module table
-		lua_pushnil(_L);                 // first key
+		lua_pushnil(_L); // first key
 		while (lua_next(_L, -2) != 0) {  // -2: table, -1: value, -2: key
 			const char* k = lua_tostring(_L, -2);
 			int t = lua_type(_L, -1);
 
-			printf("%s : %s\n", k, lua_typename(_L, t));
+			_provider->Log(std::format(LOG_PREFIX "{}: {}", k, lua_typename(_L, t)), Severity::Debug);
 
-			lua_pop(_L, 1);             // pop value, keep key for next
+			lua_pop(_L, 1); // pop value, keep key for next
 		}
+#endif
 
 		lua_pop(_L, 1);
 	}

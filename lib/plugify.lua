@@ -822,7 +822,7 @@ class_registry = {}
 local function bind_class_methods(cls, constructors, destructor, methods, invalid_value)
     invalid_value = invalid_value or 0
 
-    local class_name = cls.__name or "UnknownClass"
+    local class_name = cls.__type or "UnknownClass"
 
     -- Ensure __index points to cls for method lookup
     cls.__index = cls
