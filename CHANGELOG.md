@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.8](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.7...v2.0.8) (2025-11-27)
+
+
+### Bug Fixes
+
+* add class generator code and update test ([3f7ba53](https://github.com/untrustedmodders/plugify-module-lua/commit/3f7ba53330ec28417d1a88716c5b90efed7a4e86))
+* add initial work for class generation ([bb6f0bb](https://github.com/untrustedmodders/plugify-module-lua/commit/bb6f0bbbdc80633ec0250e0197202e8fd06a3c6c))
+* change success/fail symbols ([8e9e0c8](https://github.com/untrustedmodders/plugify-module-lua/commit/8e9e0c85bca84ceca7382f662bcc86eb85b184c7))
+* small refactor of methods ([904a228](https://github.com/untrustedmodders/plugify-module-lua/commit/904a2284952635411e023fda7571ea45da9f4411))
+* update deps ([4d99722](https://github.com/untrustedmodders/plugify-module-lua/commit/4d997224768f90c69437badd25ea4a945e8ae6c5))
+* update notify ([de68f2b](https://github.com/untrustedmodders/plugify-module-lua/commit/de68f2beff45bea9e7d624eeb7ff7806d012bdeb))
+
 ## [2.0.7](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.6...v2.0.7) (2025-10-06)
 
 
