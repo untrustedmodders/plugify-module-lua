@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.9](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.8...v2.0.9) (2025-11-28)
+
+
+### Bug Fixes
+
+* update deps ([31e3a15](https://github.com/untrustedmodders/plugify-module-lua/commit/31e3a15b46101d037293ea89751d86aa92394717))
+
 ## [2.0.8](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.7...v2.0.8) (2025-11-27)
 
 
