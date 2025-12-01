@@ -5,21 +5,21 @@ Plugin.__type = "Plugin"
 function Plugin:new(id, name, description, version, author, website, license, location, dependencies, base_dir, extensions_dir, configs_dir, data_dir, logs_dir, cache_dir)
     local self = setmetatable({}, Plugin)
     self.id = id
-	self.name = name
-	self.description = description
-	self.version = version
-	self.author = author
-	self.website = website
-	self.license = license
-	self.location = location
-	self.dependencies = dependencies or {}
+    self.name = name
+    self.description = description
+    self.version = version
+    self.author = author
+    self.website = website
+    self.license = license
+    self.location = location
+    self.dependencies = dependencies or {}
 
-	self.base_dir = base_dir
-	self.extensions_dir = extensions_dir
-	self.configs_dir = configs_dir
-	self.data_dir = data_dir
-	self.logs_dir = logs_dir
-	self.cache_dir = cache_dir
+    self.base_dir = base_dir
+    self.extensions_dir = extensions_dir
+    self.configs_dir = configs_dir
+    self.data_dir = data_dir
+    self.logs_dir = logs_dir
+    self.cache_dir = cache_dir
     return self
 end
 
@@ -839,36 +839,46 @@ local function bind_class_methods(cls, constructors, destructor, methods, invali
 
         -- Check if this is handle + ownership construction
         -- Pattern: ClassName.new(handle_value, Ownership.OWNED/BORROWED)
-        if #args >= 2 and Ownership.is(args[2]) then
+        if #args == 2 and Ownership.is(args[2]) then
             self._handle = args[1]
             self._owned = args[2]
             return self
         end
 
+        -- Check if this is handle-only construction (assume OWNED by default)
+        -- Pattern: ClassName.new(handle_value)
+        if #args == 1 and constructors == 0 then
+            self._handle = args[1]
+            self._owned = Ownership.OWNED
+            return self
+        end
+        
         -- Constructor call mode
         if #constructors == 0 then
-            error(class_name .. " requires handle and ownership for construction")
+            error(
+                ("%s has no constructors. Use: %s(handle, Ownership.OWNED/BORROWED) or %s(handle) to wrap an existing handle.")
+                :format(className, className, className)
+            )
         end
 
         -- Try constructors
-        local last_error = nil
-        for _, constructor in ipairs(constructors) do
+        local errors = {}
+        for i, constructor in ipairs(constructors) do
             local success, result = pcall(constructor, table.unpack(args))
             if success then
                 self._handle = result
                 self._owned = Ownership.OWNED
                 return self
             else
-                last_error = result
+                table.insert(errors, ("Constructor %d: %s"):format(i, handle))
             end
         end
 
         -- All constructors failed
-        if last_error then
-            error(last_error)
-        else
-            error("No constructor matched the arguments for " .. class_name)
-        end
+        error(
+            ("No constructor matched the arguments for %s.\nTried %d constructor(s):\n%s")
+            :format(className, #constructors, table.concat(errors, "\n"))
+        )
     end
 
     -- close method
@@ -1024,5 +1034,6 @@ return {
     Vector3 = Vector3,
     Vector4 = Vector4,
     Matrix4x4 = Matrix4x4,
+    Ownership = Ownership,
     bind_class_methods = bind_class_methods
 }
