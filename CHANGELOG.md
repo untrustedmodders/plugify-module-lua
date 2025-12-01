@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.10](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.9...v2.0.10) (2025-12-01)
+
+
+### Bug Fixes
+
+* add class construction with handle if no other ctors are available ([6b01643](https://github.com/untrustedmodders/plugify-module-lua/commit/6b016437eb02e74a6804cf776b921e158d55b464))
+* update plugify ([16a1156](https://github.com/untrustedmodders/plugify-module-lua/commit/16a1156c1de6adcb94c5fe82a1a57d7da57d90f6))
+
 ## [2.0.9](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.8...v2.0.9) (2025-11-28)
 
 
