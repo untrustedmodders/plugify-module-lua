@@ -3026,8 +3026,8 @@ namespace lualm {
 		}
 	}
 
-	bool LuaLanguageModule::PushAliasObject(const Alias& alias) {
-		if (alias.GetName().empty()) {
+	bool LuaLanguageModule::PushAliasObject(const std::optional<Alias>& alias) {
+		if (!alias) {
 			lua_pushnil(_L);
 			return false;
 		}
@@ -3035,11 +3035,11 @@ namespace lualm {
 		lua_createtable(_L, 2, 0);
 
 		// [1] = name
-		PushLuaObject(alias.GetName());
+		PushLuaObject(alias->GetName());
 		lua_rawseti(_L, -2, 1);
 
 		// [2] = owner
-		PushLuaObject(alias.IsOwner());
+		PushLuaObject(alias->IsOwner());
 		lua_rawseti(_L, -2, 2);
 
 		return true;
