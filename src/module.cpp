@@ -1102,22 +1102,6 @@ namespace lualm {
 		return result;
 	}
 
-	template<typename T>
-	void* LuaLanguageModule::CreateValue(int arg) {
-		if (auto value = ValueFromObject<T>(arg)) {
-			return new T(std::move(*value));
-		}
-		return nullptr;
-	}
-
-	template<typename T>
-	void* LuaLanguageModule::CreateArray(int arg) {
-		if (auto array = ArrayFromObject<T>(arg)) {
-			return new plg::vector<T>(std::move(*array));
-		}
-		return nullptr;
-	}
-
 #pragma region InternalCall
 
 	void LuaLanguageModule::SetFallbackReturn(ValueType retType, ReturnSlot& ret) {
@@ -2084,309 +2068,111 @@ namespace lualm {
 		storage.reserve(size);
 	}
 
-	LuaLanguageModule::ArgsScope::~ArgsScope() {
-		for (auto& [ptr, type] : storage) {
-			switch (type) {
-				case ValueType::Bool: {
-					delete static_cast<bool*>(ptr);
-					break;
-				}
-				case ValueType::Char8: {
-					delete static_cast<char*>(ptr);
-					break;
-				}
-				case ValueType::Char16: {
-					delete static_cast<char16_t*>(ptr);
-					break;
-				}
-				case ValueType::Int8: {
-					delete static_cast<int8_t*>(ptr);
-					break;
-				}
-				case ValueType::Int16: {
-					delete static_cast<int16_t*>(ptr);
-					break;
-				}
-				case ValueType::Int32: {
-					delete static_cast<int32_t*>(ptr);
-					break;
-				}
-				case ValueType::Int64: {
-					delete static_cast<int64_t*>(ptr);
-					break;
-				}
-				case ValueType::UInt8: {
-					delete static_cast<uint8_t*>(ptr);
-					break;
-				}
-				case ValueType::UInt16: {
-					delete static_cast<uint16_t*>(ptr);
-					break;
-				}
-				case ValueType::UInt32: {
-					delete static_cast<uint32_t*>(ptr);
-					break;
-				}
-				case ValueType::UInt64: {
-					delete static_cast<uint64_t*>(ptr);
-					break;
-				}
-				case ValueType::Pointer: {
-					delete static_cast<void**>(ptr);
-					break;
-				}
-				case ValueType::Float: {
-					delete static_cast<float*>(ptr);
-					break;
-				}
-				case ValueType::Double: {
-					delete static_cast<double*>(ptr);
-					break;
-				}
-				case ValueType::String: {
-					delete static_cast<plg::string*>(ptr);
-					break;
-				}
-				case ValueType::Any: {
-					delete static_cast<plg::any*>(ptr);
-					break;
-				}
-				case ValueType::ArrayBool: {
-					delete static_cast<plg::vector<bool>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayChar8: {
-					delete static_cast<plg::vector<char>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayChar16: {
-					delete static_cast<plg::vector<char16_t>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayInt8: {
-					delete static_cast<plg::vector<int8_t>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayInt16: {
-					delete static_cast<plg::vector<int16_t>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayInt32: {
-					delete static_cast<plg::vector<int32_t>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayInt64: {
-					delete static_cast<plg::vector<int64_t>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayUInt8: {
-					delete static_cast<plg::vector<uint8_t>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayUInt16: {
-					delete static_cast<plg::vector<uint16_t>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayUInt32: {
-					delete static_cast<plg::vector<uint32_t>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayUInt64: {
-					delete static_cast<plg::vector<uint64_t>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayPointer: {
-					delete static_cast<plg::vector<void*>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayFloat: {
-					delete static_cast<plg::vector<float>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayDouble: {
-					delete static_cast<plg::vector<double>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayString: {
-					delete static_cast<plg::vector<plg::string>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayAny: {
-					delete static_cast<plg::vector<plg::any>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayVector2: {
-					delete static_cast<plg::vector<plg::vec2>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayVector3: {
-					delete static_cast<plg::vector<plg::vec3>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayVector4: {
-					delete static_cast<plg::vector<plg::vec4>*>(ptr);
-					break;
-				}
-				case ValueType::ArrayMatrix4x4: {
-					delete static_cast<plg::vector<plg::mat4x4>*>(ptr);
-					break;
-				}
-				case ValueType::Vector2: {
-					delete static_cast<plg::vec2*>(ptr);
-					break;
-				}
-				case ValueType::Vector3: {
-					delete static_cast<plg::vec3*>(ptr);
-					break;
-				}
-				case ValueType::Vector4: {
-					delete static_cast<plg::vec4*>(ptr);
-					break;
-				}
-				case ValueType::Matrix4x4: {
-					delete static_cast<plg::mat4x4*>(ptr);
-					break;
-				}
-				default: {
-					g_lualm._provider->Log(std::format(LOG_PREFIX "[ArgsScope unhandled type {:#x}", static_cast<uint8_t>(type)), Severity::Fatal);
-					std::terminate();
-					break;
-				}
-			}
-		}
-	}
-
 	void LuaLanguageModule::BeginExternalCall(ValueType retType, ArgsScope& a) const {
 		void* value;
 		switch (retType) {
 			case ValueType::String: {
-				value = new plg::string();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::string{});
 				break;
 			}
 			case ValueType::Any: {
-				value = new plg::any();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::any{});
 				break;
 			}
 			case ValueType::ArrayBool: {
-				value = new plg::vector<bool>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<bool>{});
 				break;
 			}
 			case ValueType::ArrayChar8: {
-				value = new plg::vector<char>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<char>{});
 				break;
 			}
 			case ValueType::ArrayChar16: {
-				value = new plg::vector<char16_t>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<char16_t>{});
 				break;
 			}
 			case ValueType::ArrayInt8: {
-				value = new plg::vector<int8_t>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<int8_t>{});
 				break;
 			}
 			case ValueType::ArrayInt16: {
-				value = new plg::vector<int16_t>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<int16_t>{});
 				break;
 			}
 			case ValueType::ArrayInt32: {
-				value = new plg::vector<int32_t>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<int32_t>{});
 				break;
 			}
 			case ValueType::ArrayInt64: {
-				value = new plg::vector<int64_t>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<int64_t>{});
 				break;
 			}
 			case ValueType::ArrayUInt8: {
-				value = new plg::vector<uint8_t>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<uint8_t>{});
 				break;
 			}
 			case ValueType::ArrayUInt16: {
-				value = new plg::vector<uint16_t>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<uint16_t>{});
 				break;
 			}
 			case ValueType::ArrayUInt32: {
-				value = new plg::vector<uint32_t>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<uint32_t>{});
 				break;
 			}
 			case ValueType::ArrayUInt64: {
-				value = new plg::vector<uint64_t>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<uint64_t>{});
 				break;
 			}
 			case ValueType::ArrayPointer: {
-				value = new plg::vector<void*>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<void*>{});
 				break;
 			}
 			case ValueType::ArrayFloat: {
-				value = new plg::vector<float>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<float>{});
 				break;
 			}
 			case ValueType::ArrayDouble: {
-				value = new plg::vector<double>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<double>{});
 				break;
 			}
 			case ValueType::ArrayString: {
-				value = new plg::vector<plg::string>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<plg::string>{});
 				break;
 			}
 			case ValueType::ArrayAny: {
-				value = new plg::vector<plg::any>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<plg::any>{});
 				break;
 			}
 			case ValueType::ArrayVector2: {
-				value = new plg::vector<plg::vec2>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<plg::vec2>{});
 				break;
 			}
 			case ValueType::ArrayVector3: {
-				value = new plg::vector<plg::vec3>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<plg::vec3>{});
 				break;
 			}
 			case ValueType::ArrayVector4: {
-				value = new plg::vector<plg::vec4>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<plg::vec4>{});
 				break;
 			}
 			case ValueType::ArrayMatrix4x4: {
-				value = new plg::vector<plg::mat4x4>();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vector<plg::mat4x4>{});
 				break;
 			}
 			case ValueType::Vector2: {
-				value = new plg::vec2();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vec2{});
 				break;
 			}
 			case ValueType::Vector3: {
-				value = new plg::vec3();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vec3{});
 				break;
 			}
 			case ValueType::Vector4: {
-				value = new plg::vec4();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::vec4{});
 				break;
 			}
 			case ValueType::Matrix4x4: {
-				value = new plg::mat4x4();
-				a.storage.emplace_back(value, retType);
+				value = &a.storage.emplace_back(plg::mat4x4{});
 				break;
 			}
 			default:
@@ -2592,12 +2378,11 @@ namespace lualm {
 			a.params.Add(*value);
 			return true;
 		};
-		const auto PushRefParam = [&paramType, &a](void* value) {
+		const auto PushRefParam = [&a](auto&& value) {
 			if (!value) {
 				return false;
 			}
-			a.storage.emplace_back(value, paramType.GetType());
-			a.params.Add(value);
+			a.params.Add(&a.storage.emplace_back(*value));
 			return true;
 		};
 
@@ -2631,59 +2416,59 @@ namespace lualm {
 			case ValueType::Double:
 				return PushValParam(ValueFromObject<double>(arg));
 			case ValueType::String:
-				return PushRefParam(CreateValue<plg::string>(arg));
+				return PushRefParam(ValueFromObject<plg::string>(arg));
 			case ValueType::Any:
-				return PushRefParam(CreateValue<plg::any>(arg));
+				return PushRefParam(ValueFromObject<plg::any>(arg));
 			case ValueType::Function:
 				return PushValParam(GetOrCreateFunctionValue(*paramType.GetPrototype(), arg));
 			case ValueType::ArrayBool:
-				return PushRefParam(CreateArray<bool>(arg));
+				return PushRefParam(ArrayFromObject<bool>(arg));
 			case ValueType::ArrayChar8:
-				return PushRefParam(CreateArray<char>(arg));
+				return PushRefParam(ArrayFromObject<char>(arg));
 			case ValueType::ArrayChar16:
-				return PushRefParam(CreateArray<char16_t>(arg));
+				return PushRefParam(ArrayFromObject<char16_t>(arg));
 			case ValueType::ArrayInt8:
-				return PushRefParam(CreateArray<int8_t>(arg));
+				return PushRefParam(ArrayFromObject<int8_t>(arg));
 			case ValueType::ArrayInt16:
-				return PushRefParam(CreateArray<int16_t>(arg));
+				return PushRefParam(ArrayFromObject<int16_t>(arg));
 			case ValueType::ArrayInt32:
-				return PushRefParam(CreateArray<int32_t>(arg));
+				return PushRefParam(ArrayFromObject<int32_t>(arg));
 			case ValueType::ArrayInt64:
-				return PushRefParam(CreateArray<int64_t>(arg));
+				return PushRefParam(ArrayFromObject<int64_t>(arg));
 			case ValueType::ArrayUInt8:
-				return PushRefParam(CreateArray<uint8_t>(arg));
+				return PushRefParam(ArrayFromObject<uint8_t>(arg));
 			case ValueType::ArrayUInt16:
-				return PushRefParam(CreateArray<uint16_t>(arg));
+				return PushRefParam(ArrayFromObject<uint16_t>(arg));
 			case ValueType::ArrayUInt32:
-				return PushRefParam(CreateArray<uint32_t>(arg));
+				return PushRefParam(ArrayFromObject<uint32_t>(arg));
 			case ValueType::ArrayUInt64:
-				return PushRefParam(CreateArray<uint64_t>(arg));
+				return PushRefParam(ArrayFromObject<uint64_t>(arg));
 			case ValueType::ArrayPointer:
-				return PushRefParam(CreateArray<void*>(arg));
+				return PushRefParam(ArrayFromObject<void*>(arg));
 			case ValueType::ArrayFloat:
-				return PushRefParam(CreateArray<float>(arg));
+				return PushRefParam(ArrayFromObject<float>(arg));
 			case ValueType::ArrayDouble:
-				return PushRefParam(CreateArray<double>(arg));
+				return PushRefParam(ArrayFromObject<double>(arg));
 			case ValueType::ArrayString:
-				return PushRefParam(CreateArray<plg::string>(arg));
+				return PushRefParam(ArrayFromObject<plg::string>(arg));
 			case ValueType::ArrayAny:
-				return PushRefParam(CreateArray<plg::any>(arg));
+				return PushRefParam(ArrayFromObject<plg::any>(arg));
 			case ValueType::ArrayVector2:
-				return PushRefParam(CreateArray<plg::vec2>(arg));
+				return PushRefParam(ArrayFromObject<plg::vec2>(arg));
 			case ValueType::ArrayVector3:
-				return PushRefParam(CreateArray<plg::vec3>(arg));
+				return PushRefParam(ArrayFromObject<plg::vec3>(arg));
 			case ValueType::ArrayVector4:
-				return PushRefParam(CreateArray<plg::vec4>(arg));
+				return PushRefParam(ArrayFromObject<plg::vec4>(arg));
 			case ValueType::ArrayMatrix4x4:
-				return PushRefParam(CreateArray<plg::mat4x4>(arg));
+				return PushRefParam(ArrayFromObject<plg::mat4x4>(arg));
 			case ValueType::Vector2:
-				return PushRefParam(CreateValue<plg::vec2>(arg));
+				return PushRefParam(ValueFromObject<plg::vec2>(arg));
 			case ValueType::Vector3:
-				return PushRefParam(CreateValue<plg::vec3>(arg));
+				return PushRefParam(ValueFromObject<plg::vec3>(arg));
 			case ValueType::Vector4:
-				return PushRefParam(CreateValue<plg::vec4>(arg));
+				return PushRefParam(ValueFromObject<plg::vec4>(arg));
 			case ValueType::Matrix4x4:
-				return PushRefParam(CreateValue<plg::mat4x4>(arg));
+				return PushRefParam(ValueFromObject<plg::mat4x4>(arg));
 			default:
 				luaL_error(_L, "PushObjectAsParam unsupported type %d", static_cast<int>(paramType.GetType()));
 				return {};
@@ -2691,96 +2476,95 @@ namespace lualm {
 	}
 
 	bool LuaLanguageModule::PushObjectAsRefParam(const Property& paramType, int arg, ArgsScope& a) {
-		const auto PushRefParam = [&paramType, &a](void* value) {
+		const auto PushRefParam = [&a](auto&& value) {
 			if (!value) {
 				return false;
 			}
-			a.storage.emplace_back(value, paramType.GetType());
-			a.params.Add(value);
+			a.params.Add(&a.storage.emplace_back(*value));
 			return true;
 		};
 
 		switch (paramType.GetType()) {
 			case ValueType::Bool:
-				return PushRefParam(CreateValue<bool>(arg));
+				return PushRefParam(ValueFromObject<bool>(arg));
 			case ValueType::Char8:
-				return PushRefParam(CreateValue<char>(arg));
+				return PushRefParam(ValueFromObject<char>(arg));
 			case ValueType::Char16:
-				return PushRefParam(CreateValue<char16_t>(arg));
+				return PushRefParam(ValueFromObject<char16_t>(arg));
 			case ValueType::Int8:
-				return PushRefParam(CreateValue<int8_t>(arg));
+				return PushRefParam(ValueFromObject<int8_t>(arg));
 			case ValueType::Int16:
-				return PushRefParam(CreateValue<int16_t>(arg));
+				return PushRefParam(ValueFromObject<int16_t>(arg));
 			case ValueType::Int32:
-				return PushRefParam(CreateValue<int32_t>(arg));
+				return PushRefParam(ValueFromObject<int32_t>(arg));
 			case ValueType::Int64:
-				return PushRefParam(CreateValue<int64_t>(arg));
+				return PushRefParam(ValueFromObject<int64_t>(arg));
 			case ValueType::UInt8:
-				return PushRefParam(CreateValue<uint8_t>(arg));
+				return PushRefParam(ValueFromObject<uint8_t>(arg));
 			case ValueType::UInt16:
-				return PushRefParam(CreateValue<uint16_t>(arg));
+				return PushRefParam(ValueFromObject<uint16_t>(arg));
 			case ValueType::UInt32:
-				return PushRefParam(CreateValue<uint32_t>(arg));
+				return PushRefParam(ValueFromObject<uint32_t>(arg));
 			case ValueType::UInt64:
-				return PushRefParam(CreateValue<uint64_t>(arg));
+				return PushRefParam(ValueFromObject<uint64_t>(arg));
 			case ValueType::Pointer:
-				return PushRefParam(CreateValue<void*>(arg));
+				return PushRefParam(ValueFromObject<void*>(arg));
 			case ValueType::Float:
-				return PushRefParam(CreateValue<float>(arg));
+				return PushRefParam(ValueFromObject<float>(arg));
 			case ValueType::Double:
-				return PushRefParam(CreateValue<double>(arg));
+				return PushRefParam(ValueFromObject<double>(arg));
 			case ValueType::String:
-				return PushRefParam(CreateValue<plg::string>(arg));
+				return PushRefParam(ValueFromObject<plg::string>(arg));
 			case ValueType::Any:
-				return PushRefParam(CreateValue<plg::any>(arg));
+				return PushRefParam(ValueFromObject<plg::any>(arg));
 			case ValueType::ArrayBool:
-				return PushRefParam(CreateArray<bool>(arg));
+				return PushRefParam(ArrayFromObject<bool>(arg));
 			case ValueType::ArrayChar8:
-				return PushRefParam(CreateArray<char>(arg));
+				return PushRefParam(ArrayFromObject<char>(arg));
 			case ValueType::ArrayChar16:
-				return PushRefParam(CreateArray<char16_t>(arg));
+				return PushRefParam(ArrayFromObject<char16_t>(arg));
 			case ValueType::ArrayInt8:
-				return PushRefParam(CreateArray<int8_t>(arg));
+				return PushRefParam(ArrayFromObject<int8_t>(arg));
 			case ValueType::ArrayInt16:
-				return PushRefParam(CreateArray<int16_t>(arg));
+				return PushRefParam(ArrayFromObject<int16_t>(arg));
 			case ValueType::ArrayInt32:
-				return PushRefParam(CreateArray<int32_t>(arg));
+				return PushRefParam(ArrayFromObject<int32_t>(arg));
 			case ValueType::ArrayInt64:
-				return PushRefParam(CreateArray<int64_t>(arg));
+				return PushRefParam(ArrayFromObject<int64_t>(arg));
 			case ValueType::ArrayUInt8:
-				return PushRefParam(CreateArray<uint8_t>(arg));
+				return PushRefParam(ArrayFromObject<uint8_t>(arg));
 			case ValueType::ArrayUInt16:
-				return PushRefParam(CreateArray<uint16_t>(arg));
+				return PushRefParam(ArrayFromObject<uint16_t>(arg));
 			case ValueType::ArrayUInt32:
-				return PushRefParam(CreateArray<uint32_t>(arg));
+				return PushRefParam(ArrayFromObject<uint32_t>(arg));
 			case ValueType::ArrayUInt64:
-				return PushRefParam(CreateArray<uint64_t>(arg));
+				return PushRefParam(ArrayFromObject<uint64_t>(arg));
 			case ValueType::ArrayPointer:
-				return PushRefParam(CreateArray<void*>(arg));
+				return PushRefParam(ArrayFromObject<void*>(arg));
 			case ValueType::ArrayFloat:
-				return PushRefParam(CreateArray<float>(arg));
+				return PushRefParam(ArrayFromObject<float>(arg));
 			case ValueType::ArrayDouble:
-				return PushRefParam(CreateArray<double>(arg));
+				return PushRefParam(ArrayFromObject<double>(arg));
 			case ValueType::ArrayString:
-				return PushRefParam(CreateArray<plg::string>(arg));
+				return PushRefParam(ArrayFromObject<plg::string>(arg));
 			case ValueType::ArrayAny:
-				return PushRefParam(CreateArray<plg::any>(arg));
+				return PushRefParam(ArrayFromObject<plg::any>(arg));
 			case ValueType::ArrayVector2:
-				return PushRefParam(CreateArray<plg::vec2>(arg));
+				return PushRefParam(ArrayFromObject<plg::vec2>(arg));
 			case ValueType::ArrayVector3:
-				return PushRefParam(CreateArray<plg::vec3>(arg));
+				return PushRefParam(ArrayFromObject<plg::vec3>(arg));
 			case ValueType::ArrayVector4:
-				return PushRefParam(CreateArray<plg::vec4>(arg));
+				return PushRefParam(ArrayFromObject<plg::vec4>(arg));
 			case ValueType::ArrayMatrix4x4:
-				return PushRefParam(CreateArray<plg::mat4x4>(arg));
+				return PushRefParam(ArrayFromObject<plg::mat4x4>(arg));
 			case ValueType::Vector2:
-				return PushRefParam(CreateValue<plg::vec2>(arg));
+				return PushRefParam(ValueFromObject<plg::vec2>(arg));
 			case ValueType::Vector3:
-				return PushRefParam(CreateValue<plg::vec3>(arg));
+				return PushRefParam(ValueFromObject<plg::vec3>(arg));
 			case ValueType::Vector4:
-				return PushRefParam(CreateValue<plg::vec4>(arg));
+				return PushRefParam(ValueFromObject<plg::vec4>(arg));
 			case ValueType::Matrix4x4:
-				return PushRefParam(CreateValue<plg::mat4x4>(arg));
+				return PushRefParam(ValueFromObject<plg::mat4x4>(arg));
 			default:
 				luaL_error(_L, "PushObjectAsRefParam unsupported enum type %d", static_cast<int>(paramType.GetType()));
 				return {};
@@ -2790,85 +2574,85 @@ namespace lualm {
 	bool LuaLanguageModule::StorageValueToObject(const Property& paramType, const ArgsScope& a, size_t index) {
 		switch (paramType.GetType()) {
 			case ValueType::Bool:
-				return PushLuaObject(*static_cast<bool*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<bool>(a.storage[index]));
 			case ValueType::Char8:
-				return PushLuaObject(*static_cast<char*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<char>(a.storage[index]));
 			case ValueType::Char16:
-				return PushLuaObject(*static_cast<char16_t*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<char16_t>(a.storage[index]));
 			case ValueType::Int8:
-				return PushLuaObject(*static_cast<int8_t*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<int8_t>(a.storage[index]));
 			case ValueType::Int16:
-				return PushLuaObject(*static_cast<int16_t*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<int16_t>(a.storage[index]));
 			case ValueType::Int32:
-				return PushLuaObject(*static_cast<int32_t*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<int32_t>(a.storage[index]));
 			case ValueType::Int64:
-				return PushLuaObject(*static_cast<int64_t*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<int64_t>(a.storage[index]));
 			case ValueType::UInt8:
-				return PushLuaObject(*static_cast<uint8_t*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<uint8_t>(a.storage[index]));
 			case ValueType::UInt16:
-				return PushLuaObject(*static_cast<uint16_t*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<uint16_t>(a.storage[index]));
 			case ValueType::UInt32:
-				return PushLuaObject(*static_cast<uint32_t*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<uint32_t>(a.storage[index]));
 			case ValueType::UInt64:
-				return PushLuaObject(*static_cast<uint64_t*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<uint64_t>(a.storage[index]));
 			case ValueType::Float:
-				return PushLuaObject(*static_cast<float*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<float>(a.storage[index]));
 			case ValueType::Double:
-				return PushLuaObject(*static_cast<double*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<double>(a.storage[index]));
 			case ValueType::String:
-				return PushLuaObject(*static_cast<plg::string*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<plg::string>(a.storage[index]));
 			case ValueType::Any:
-				return PushLuaObject(*static_cast<plg::any*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<plg::any>(a.storage[index]));
 			case ValueType::Pointer:
-				return PushLuaObject(*static_cast<void**>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<void*>(a.storage[index]));
 			case ValueType::ArrayBool:
-				return PushLuaObjectList(*static_cast<plg::vector<bool>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<bool>>(a.storage[index]));
 			case ValueType::ArrayChar8:
-				return PushLuaObjectList(*static_cast<plg::vector<char>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<char>>(a.storage[index]));
 			case ValueType::ArrayChar16:
-				return PushLuaObjectList(*static_cast<plg::vector<char16_t>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<char16_t>>(a.storage[index]));
 			case ValueType::ArrayInt8:
-				return PushLuaObjectList(*static_cast<plg::vector<int8_t>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<int8_t>>(a.storage[index]));
 			case ValueType::ArrayInt16:
-				return PushLuaObjectList(*static_cast<plg::vector<int16_t>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<int16_t>>(a.storage[index]));
 			case ValueType::ArrayInt32:
-				return PushLuaObjectList(*static_cast<plg::vector<int32_t>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<int32_t>>(a.storage[index]));
 			case ValueType::ArrayInt64:
-				return PushLuaObjectList(*static_cast<plg::vector<int64_t>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<int64_t>>(a.storage[index]));
 			case ValueType::ArrayUInt8:
-				return PushLuaObjectList(*static_cast<plg::vector<uint8_t>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<uint8_t>>(a.storage[index]));
 			case ValueType::ArrayUInt16:
-				return PushLuaObjectList(*static_cast<plg::vector<uint16_t>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<uint16_t>>(a.storage[index]));
 			case ValueType::ArrayUInt32:
-				return PushLuaObjectList(*static_cast<plg::vector<uint32_t>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<uint32_t>>(a.storage[index]));
 			case ValueType::ArrayUInt64:
-				return PushLuaObjectList(*static_cast<plg::vector<uint64_t>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<uint64_t>>(a.storage[index]));
 			case ValueType::ArrayPointer:
-				return PushLuaObjectList(*static_cast<plg::vector<void*>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<void*>>(a.storage[index]));
 			case ValueType::ArrayFloat:
-				return PushLuaObjectList(*static_cast<plg::vector<float>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<float>>(a.storage[index]));
 			case ValueType::ArrayDouble:
-				return PushLuaObjectList(*static_cast<plg::vector<double>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<double>>(a.storage[index]));
 			case ValueType::ArrayString:
-				return PushLuaObjectList(*static_cast<plg::vector<plg::string>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<plg::string>>(a.storage[index]));
 			case ValueType::ArrayAny:
-				return PushLuaObjectList(*static_cast<plg::vector<plg::any>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<plg::any>>(a.storage[index]));
 			case ValueType::ArrayVector2:
-				return PushLuaObjectList(*static_cast<plg::vector<plg::vec2>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<plg::vec2>>(a.storage[index]));
 			case ValueType::ArrayVector3:
-				return PushLuaObjectList(*static_cast<plg::vector<plg::vec3>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<plg::vec3>>(a.storage[index]));
 			case ValueType::ArrayVector4:
-				return PushLuaObjectList(*static_cast<plg::vector<plg::vec4>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<plg::vec4>>(a.storage[index]));
 			case ValueType::ArrayMatrix4x4:
-				return PushLuaObjectList(*static_cast<plg::vector<plg::mat4x4>*>(std::get<0>(a.storage[index])));
+				return PushLuaObjectList(plg::get<plg::vector<plg::mat4x4>>(a.storage[index]));
 			case ValueType::Vector2:
-				return PushLuaObject(*static_cast<plg::vec2*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<plg::vec2>(a.storage[index]));
 			case ValueType::Vector3:
-				return PushLuaObject(*static_cast<plg::vec3*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<plg::vec3>(a.storage[index]));
 			case ValueType::Vector4:
-				return PushLuaObject(*static_cast<plg::vec4*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<plg::vec4>(a.storage[index]));
 			case ValueType::Matrix4x4:
-				return PushLuaObject(*static_cast<plg::mat4x4*>(std::get<0>(a.storage[index])));
+				return PushLuaObject(plg::get<plg::mat4x4>(a.storage[index]));
 			default:
 				luaL_error(_L, "StorageValueToObject unsupported type %d", static_cast<int>(paramType.GetType()));
 				return false;
