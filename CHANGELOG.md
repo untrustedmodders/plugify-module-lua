@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.12](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.11...v2.0.12) (2025-12-25)
+
+
+### Bug Fixes
+
+* remove heap allocation for arg storage ([f1017f6](https://github.com/untrustedmodders/plugify-module-lua/commit/f1017f6b7077f843ce474544d20dfcc3328984bc))
+
 ## [2.0.11](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.10...v2.0.11) (2025-12-13)
 
 
