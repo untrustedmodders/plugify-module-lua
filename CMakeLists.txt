@@ -50,6 +50,7 @@ add_subdirectory(external/plugify)
 # Lua
 #
 set(LUA_ENABLE_SHARED OFF CACHE INTERNAL "")
+set(LUA_BUILD_AS_CXX ON CACHE INTERNAL "")
 add_subdirectory(external/lua)
 
 #
