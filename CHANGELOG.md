@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.13](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.12...v2.0.13) (2025-12-26)
+
+
+### Bug Fixes
+
+* force lua to unwind stack properly on C++ ([0fe61f1](https://github.com/untrustedmodders/plugify-module-lua/commit/0fe61f19c1cc950c5178c88ced158512ad0f6cb7))
+
 ## [2.0.12](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.11...v2.0.12) (2025-12-25)
 
 
