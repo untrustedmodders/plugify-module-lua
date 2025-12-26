@@ -2362,7 +2362,7 @@ end
 
 function M.basic_lifecycle()
     log("TEST 1: Basic Lifecycle")
-    log("───────────────────────")
+    log("_______________________")
 
     local initial_alive = master.ResourceHandle.GetAliveCount()
     local initial_created = master.ResourceHandle.GetTotalCreated()
@@ -2392,7 +2392,7 @@ end
 
 function M.state_management()
     log("TEST 2: State Management")
-    log("────────────────────────")
+    log("________________________")
 
     do
         local resource <close> = master.ResourceHandle.new(2, "StateTest")
@@ -2425,7 +2425,7 @@ end
 
 function M.multiple_instances()
     log("TEST 3: Multiple Instances")
-    log("──────────────────────────")
+    log("__________________________")
 
     local before_alive = master.ResourceHandle.GetAliveCount()
 
@@ -2458,7 +2458,7 @@ end
 
 function M.counter_without_destructor()
     log("TEST 4: Counter (No Destructor)")
-    log("────────────────────────────────")
+    log("________________________________")
 
     local counter = master.Counter.new(100)
     log(string.format("v Created Counter with value: %d", counter:GetValue()))
@@ -2483,7 +2483,7 @@ end
 
 function M.static_methods()
     log("TEST 5: Static Methods")
-    log("──────────────────────")
+    log("______________________")
 
     local alive = master.ResourceHandle.GetAliveCount()
     local created = master.ResourceHandle.GetTotalCreated()
@@ -2512,7 +2512,7 @@ end
 
 function M.memory_leak_detection()
     log("TEST 6: Memory Leak Detection")
-    log("──────────────────────────────")
+    log("______________________________")
 
     local before_alive = master.ResourceHandle.GetAliveCount()
 
@@ -2540,7 +2540,7 @@ end
 
 function M.exception_handling()
     log("TEST 7: Exception Handling")
-    log("──────────────────────────")
+    log("__________________________")
 
     local resource = master.ResourceHandle.new(777, "ExceptionTest")
     resource:__close()
@@ -2561,7 +2561,7 @@ end
 
 function M.ownership_transfer()
     log("TEST 8: Ownership Transfer (get + release)")
-    log("─────────────────────────────────────────")
+    log("_________________________________________")
 
     local initial_alive = master.ResourceHandle.GetAliveCount()
     local initial_created = master.ResourceHandle.GetTotalCreated()
