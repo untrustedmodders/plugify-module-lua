@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.14](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.13...v2.0.14) (2026-01-03)
+
+
+### Bug Fixes
+
+* add build type to configure step ([c9682e7](https://github.com/untrustedmodders/plugify-module-lua/commit/c9682e7c9e1116f0a5c59f31cbf58e0b07fc1905))
+
 ## [2.0.13](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.12...v2.0.13) (2025-12-26)
 
 
