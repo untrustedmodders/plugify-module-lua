@@ -120,7 +120,7 @@ jobs:
       - name: Configure
         shell: bash -el {0}
         run: |
-          cmake -S . -B build -G "Ninja" -DLUALM_VERSION="${{ needs.setup.outputs.tag_name }}" -DLUALM_GITHUB_ACTIONS=1
+          cmake -S . -B build -G "Ninja" -DLUALM_VERSION="${{ needs.setup.outputs.tag_name }}" -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DLUALM_GITHUB_ACTIONS=1
 
       - name: Build
         shell: bash -el {0}
