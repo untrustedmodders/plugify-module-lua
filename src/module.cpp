@@ -2694,12 +2694,11 @@ namespace lualm {
 		const auto& paramTypes = method.GetParamTypes();
 		const size_t paramCount = paramTypes.size();
 		const auto size = static_cast<size_t>(lua_gettop(_L));
-		const size_t t = size - paramCount;
-		if (t == 0 && size != paramCount) {
-			luaL_error(_L, "Wrong number of parameters, %zu when %zu required.", size, paramCount);
-			ret.Set<int>(0);
+		if (size < paramCount) {
+			ret.Set<int>(luaL_error(_L, "Wrong number of parameters, %zu when %zu required.", size, paramCount));
 			return;
 		}
+		const size_t t = size - paramCount;
 
 		const auto& retType = method.GetRetType();
 		const bool hasHiddenParam = ValueUtils::IsHiddenParam(retType.GetType());
