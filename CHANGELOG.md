@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.0.15](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.14...v2.0.15) (2026-02-01)
+
+
+### Bug Fixes
+
+* add new alias tests ([64cc616](https://github.com/untrustedmodders/plugify-module-lua/commit/64cc616ee6600cd9e05ea72175d17927b8f8aed3))
+* rework wrong param arg ([7de15b4](https://github.com/untrustedmodders/plugify-module-lua/commit/7de15b41455f181de85e9605800c8c7f9e6e8048))
+* supress assert in set return ([3d48f8f](https://github.com/untrustedmodders/plugify-module-lua/commit/3d48f8f41e5f9534ec59ce3d43d9be81c9706038))
+
 ## [2.0.14](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.0.13...v2.0.14) (2026-01-03)
 
 
