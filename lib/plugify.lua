@@ -870,7 +870,7 @@ local function bind_class_methods(cls, constructors, destructor, methods, invali
                 self._owned = Ownership.OWNED
                 return self
             else
-                table.insert(errors, ("Constructor %d: %s"):format(i, handle))
+                table.insert(errors, ("Constructor %d: %s"):format(i, result))
             end
         end
 
