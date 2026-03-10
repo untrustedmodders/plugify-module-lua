@@ -188,7 +188,7 @@ namespace lualm {
 			const auto* filename = data.RCast<const char*>();
 
 			if (luaL_dofile(L, filename) != LUA_OK) {
-				g_lualm.GetProvider()->Log(std::format(LOG_PREFIX "Failed to load module: {} - {}", filename, lua_tostring(L, -1)), Severity::Error);
+				g_lualm.GetLogger()->Log(std::format(LOG_PREFIX "Failed to load module: {} - {}", filename, lua_tostring(L, -1)), Severity::Error);
 				lua_pop(L, 1);
 				ret.Set<int>(0);
 				return;
@@ -1232,7 +1232,7 @@ namespace lualm {
 				ret.Set<plg::mat4x4>({});
 				break;
 			default: {
-				_provider->Log(std::format(LOG_PREFIX "SetFallbackReturn unsupported type {:#x}", static_cast<uint8_t>(retType)), Severity::Fatal);
+				_logger->Log(std::format(LOG_PREFIX "SetFallbackReturn unsupported type {:#x}", static_cast<uint8_t>(retType)), Severity::Fatal);
 				std::terminate();
 				break;
 			}
@@ -1490,7 +1490,7 @@ namespace lualm {
 				}
 				break;
 			default: {
-				_provider->Log(std::format(LOG_PREFIX "SetReturn unsupported type {:#x}", static_cast<uint8_t>(retType.GetType())), Severity::Fatal);
+				_logger->Log(std::format(LOG_PREFIX "SetReturn unsupported type {:#x}", static_cast<uint8_t>(retType.GetType())), Severity::Fatal);
 				std::terminate();
 				break;
 			}
@@ -1782,7 +1782,7 @@ namespace lualm {
 				}
 				break;
 			default: {
-				_provider->Log(std::format(LOG_PREFIX "SetRefParam unsupported type {:#x}", static_cast<uint8_t>(paramType.GetType())), Severity::Fatal);
+				_logger->Log(std::format(LOG_PREFIX "SetRefParam unsupported type {:#x}", static_cast<uint8_t>(paramType.GetType())), Severity::Fatal);
 				std::terminate();
 				break;
 			}
@@ -1876,7 +1876,7 @@ namespace lualm {
 			case ValueType::Matrix4x4:
 				return PushLuaObject(*(params.Get<plg::mat4x4*>(index)));
 			default: {
-				_provider->Log(std::format(LOG_PREFIX "ParamToObject unsupported type {:#x}", static_cast<uint8_t>(paramType.GetType())), Severity::Fatal);
+				_logger->Log(std::format(LOG_PREFIX "ParamToObject unsupported type {:#x}", static_cast<uint8_t>(paramType.GetType())), Severity::Fatal);
 				std::terminate();
 			}
 		}
@@ -1965,7 +1965,7 @@ namespace lualm {
 			case ValueType::Matrix4x4:
 				return PushLuaObject(*(params.Get<plg::mat4x4*>(index)));
 			default: {
-				_provider->Log(std::format(LOG_PREFIX "ParamRefToObject unsupported type {:#x}", static_cast<uint8_t>(paramType.GetType())), Severity::Fatal);
+				_logger->Log(std::format(LOG_PREFIX "ParamRefToObject unsupported type {:#x}", static_cast<uint8_t>(paramType.GetType())), Severity::Fatal);
 				std::terminate();
 			}
 		}
@@ -2201,7 +2201,7 @@ namespace lualm {
 				break;
 			}
 			default:
-				_provider->Log(std::format(LOG_PREFIX "BeginExternalCall unsupported type {:#x}", static_cast<uint8_t>(retType)), Severity::Fatal);
+				_logger->Log(std::format(LOG_PREFIX "BeginExternalCall unsupported type {:#x}", static_cast<uint8_t>(retType)), Severity::Fatal);
 				std::terminate();
 				break;
 		}
@@ -2698,6 +2698,25 @@ namespace lualm {
 			ret.Set<int>(luaL_error(_L, "Wrong number of parameters, %zu when %zu required.", size, paramCount));
 			return;
 		}
+
+		if (const auto& logger = g_lualm.GetLogger()/*; logger && logger->GetLogLevel() <= Severity::Debug*/) {
+			lua_Debug ar;
+			if (lua_getstack(_L, 1, &ar)) {
+				// S: fills source, short_src, what, linedefined, lastlinedefined
+				// n: fills name, namewhat
+				// l: fills currentline
+				lua_getinfo(_L, "Snl", &ar);
+
+				logger->Log(method.GetName(), Severity::Trace, Location(
+					static_cast<size_t>(ar.currentline),
+					0,
+					ar.source ? ar.source : "unknown",
+					ar.name ? ar.name : (ar.what ? ar.what : "anonymous"),
+					ar.short_src ? ar.short_src : "unknown"
+				));
+			}
+		}
+
 		const size_t t = size - paramCount;
 
 		const auto& retType = method.GetRetType();
@@ -2865,7 +2884,7 @@ namespace lualm {
 		if (it != functions.end()) {
 			lua_pushcfunction(_L, it->second);
 		} else {
-			_provider->Log(std::format(LOG_PREFIX "Method function not found: {}", binding.GetMethod()), Severity::Fatal);
+			_logger->Log(std::format(LOG_PREFIX "Method function not found: {}", binding.GetMethod()), Severity::Fatal);
 			std::terminate();
 		}
 		lua_rawseti(_L, -2, 2);
@@ -2914,7 +2933,7 @@ namespace lualm {
 				lua_pushcfunction(_L, it->second);
 				lua_rawseti(_L, -2, static_cast<int>(i + 1));
 			} else {
-				_provider->Log(std::format(LOG_PREFIX "Constructor function not found: {}", constructors[i]), Severity::Fatal);
+				_logger->Log(std::format(LOG_PREFIX "Constructor function not found: {}", constructors[i]), Severity::Fatal);
 				std::terminate();
 			}
 		}
@@ -2926,7 +2945,7 @@ namespace lualm {
 			if (it != functions.end()) {
 				lua_pushcfunction(_L, it->second);
 			} else {
-				_provider->Log(std::format(LOG_PREFIX "Destructor function not found: {}", destructor), Severity::Fatal);
+				_logger->Log(std::format(LOG_PREFIX "Destructor function not found: {}", destructor), Severity::Fatal);
 				std::terminate();
 			}
 		} else {
@@ -2947,7 +2966,7 @@ namespace lualm {
 		// Call: bind_class_methods(cls, constructors, destructor, methods, invalid_value)
 		if (lua_pcall(_L, 5, 1, 0) != LUA_OK) {
 			LogError();
-			_provider->Log(std::format(LOG_PREFIX "{}: call of 'bind_class_methods' failed", className), Severity::Error);
+			_logger->Log(std::format(LOG_PREFIX "{}: call of 'bind_class_methods' failed", className), Severity::Error);
 			lua_pop(_L, 1);
 			lua_pop(_L, 1); // Pop class table
 			return;
@@ -2970,7 +2989,7 @@ namespace lualm {
 
 			const MemAddr callAddr = call.GetJitFunc(method, addr);
 			if (!callAddr) {
-				_provider->Log(std::format(LOG_PREFIX "Lang module JIT failed to generate c++ call wrapper '{}'", call.GetError()), Severity::Fatal);
+				_logger->Log(std::format(LOG_PREFIX "Lang module JIT failed to generate c++ call wrapper '{}'", call.GetError()), Severity::Fatal);
 				std::terminate();
 			}
 
@@ -2983,7 +3002,7 @@ namespace lualm {
 			// Generate function --> int (MethodLuaCall*)(lua_State* L)
 			const MemAddr methodAddr = callback.GetJitFunc(sig, &method, &detail::ExternalCall, callAddr, false);
 			if (!methodAddr) {
-				_provider->Log(std::format(LOG_PREFIX "Lang module JIT failed to generate c++ lua_CFunction wrapper '{}'", callback.GetError()), Severity::Fatal);
+				_logger->Log(std::format(LOG_PREFIX "Lang module JIT failed to generate c++ lua_CFunction wrapper '{}'", callback.GetError()), Severity::Fatal);
 				std::terminate();
 			}
 
@@ -3014,6 +3033,7 @@ namespace lualm {
 
 	Result<InitData> LuaLanguageModule::Initialize(const Provider& provider, const Extension& module) {
 		_provider = std::make_unique<Provider>(provider);
+		_logger = _provider->Resolve<ILogger>();
 
 		std::error_code ec;
 		const fs::path moduleBasePath = fs::absolute(module.GetLocation(), ec);
@@ -3131,6 +3151,9 @@ namespace lualm {
 
 		lua_close(_L);
 		_L = nullptr;
+
+		_logger.reset();
+		_provider.reset();
 	}
 
 	void LuaLanguageModule::OnUpdate([[maybe_unused]] std::chrono::milliseconds dt) {
@@ -3329,7 +3352,7 @@ namespace lualm {
 			lua_getinfo(_L, "Sln", &ar);
 			std::format_to(std::back_inserter(trace), "\t{}:{}: in function '{}'\n", ar.short_src, ar.currentline, ar.name ? ar.name : "?");
 		}
-		_provider->Log(trace, Severity::Error);
+		_logger->Log(trace, Severity::Error);
 	}
 
 	void LuaLanguageModule::OnPluginStart(const Extension& plugin) {
@@ -3340,7 +3363,7 @@ namespace lualm {
 			lua_pushvalue(_L, -2); // self
 			if (lua_pcall(_L, 1, 0, 0) != LUA_OK) {
 				LogError();
-				_provider->Log(std::format(LOG_PREFIX "{}: call of 'plugin_start' failed", plugin.GetName()), Severity::Error);
+				_logger->Log(std::format(LOG_PREFIX "{}: call of 'plugin_start' failed", plugin.GetName()), Severity::Error);
 				lua_pop(_L, 1); // Pop error
 			}
 			lua_pop(_L, 1); // Pop instance
@@ -3356,7 +3379,7 @@ namespace lualm {
 			lua_pushnumber(_L, std::chrono::duration<float>(dt).count()); // dt
 			if (lua_pcall(_L, 2, 0, 0) != LUA_OK) {
 				LogError();
-				_provider->Log(std::format(LOG_PREFIX "{}: call of 'plugin_update' failed", plugin.GetName()), Severity::Error);
+				_logger->Log(std::format(LOG_PREFIX "{}: call of 'plugin_update' failed", plugin.GetName()), Severity::Error);
 				lua_pop(_L, 1); // Pop error
 			}
 			lua_pop(_L, 1); // Pop instance
@@ -3371,7 +3394,7 @@ namespace lualm {
 			lua_pushvalue(_L, -2); // self
 			if (lua_pcall(_L, 1, 0, 0) != LUA_OK) {
 				LogError();
-				_provider->Log(std::format(LOG_PREFIX "{}: call of 'plugin_end' failed", plugin.GetName()), Severity::Error);
+				_logger->Log(std::format(LOG_PREFIX "{}: call of 'plugin_end' failed", plugin.GetName()), Severity::Error);
 				lua_pop(_L, 1); // Pop error
 			}
 			lua_pop(_L, 1); // Pop instance
@@ -3444,7 +3467,7 @@ namespace lualm {
 			const char* k = lua_tostring(_L, -2);
 			int t = lua_type(_L, -1);
 
-			_provider->Log(std::format(LOG_PREFIX "{}: {}", k, lua_typename(_L, t)), Severity::Debug);
+			_logger->Log(std::format(LOG_PREFIX "{}: {}", k, lua_typename(_L, t)), Severity::Debug);
 
 			lua_pop(_L, 1); // pop value, keep key for next
 		}

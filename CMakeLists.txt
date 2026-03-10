@@ -100,6 +100,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
         LUALM_PLATFORM_APPLE=$<BOOL:${APPLE}>
         LUALM_PLATFORM_LINUX=$<BOOL:${LINUX}>
         LUALM_IS_DEBUG=$<STREQUAL:${CMAKE_BUILD_TYPE},Debug>
+        LUALM_IS_RELEASE=$<STREQUAL:${CMAKE_BUILD_TYPE},Release>
 )
 
 configure_file(

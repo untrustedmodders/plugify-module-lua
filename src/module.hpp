@@ -12,6 +12,7 @@
 #include <plugify/class.hpp>
 #include <plugify/binding.hpp>
 #include <plugify/alias.hpp>
+#include <plugify/logger.hpp>
 
 #include <plg/any.hpp>
 #include <plg/format.hpp>
@@ -82,6 +83,7 @@ namespace lualm {
 		bool IsDebugBuild() override;
 
 		const std::unique_ptr<Provider>& GetProvider() const { return _provider; }
+		const std::shared_ptr<ILogger>& GetLogger() const { return _logger; }
 
 	private:
 		Result<LuaMethodData> GenerateMethodExport(const Method& method, int pluginRef);
@@ -192,6 +194,7 @@ namespace lualm {
 
 	private:
 		std::unique_ptr<Provider> _provider;
+		std::shared_ptr<ILogger> _logger;
 		lua_State* _L{nullptr};
 		int _bindClassFunc{LUA_REFNIL};
 		int _vector2Ref{LUA_REFNIL};
