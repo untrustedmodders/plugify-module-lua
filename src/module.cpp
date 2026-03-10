@@ -2712,7 +2712,7 @@ namespace lualm {
 					0,
 					ar.source ? ar.source : "unknown",
 					ar.name ? ar.name : (ar.what ? ar.what : "anonymous"),
-					ar.short_src ? ar.short_src : "unknown"
+					ar.short_src[0] != '\0' ? ar.short_src : "unknown"
 				));
 			}
 		}
