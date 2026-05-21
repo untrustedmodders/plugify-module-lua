@@ -2684,7 +2684,36 @@ namespace lualm {
 		}
 	}
 
+	ScopedZone LuaLanguageModule::TraceCall(std::string_view methodName) const {
+		ScopedZone zone;
+
+		lua_Debug ar;
+		if (lua_getstack(_L, 1, &ar)) {
+			// S: fills source, short_src, what, linedefined, lastlinedefined
+			// n: fills name, namewhat
+			// l: fills currentline
+			lua_getinfo(_L, "Snl", &ar);
+
+			const size_t line = static_cast<size_t>(ar.currentline);
+			const std::string_view fileName = ar.source ? ar.source : "unknown";
+			const std::string_view functionName = ar.name ? ar.name : (ar.what ? ar.what : "anonymous");
+			const std::string_view moduleName = ar.short_src[0] != '\0' ? ar.short_src : "unknown";
+
+			if (const auto& profiler = _profiler) {
+				zone = ScopedZone(profiler, ZoneInfo{std::format("{}::{}", moduleName, methodName), functionName, fileName, line, 0});
+			}
+
+			if (const auto& logger = _logger/*; logger && logger->GetLogLevel() <= Severity::Debug*/) {
+				logger->Log(methodName, Severity::Trace, Location(line, 0, fileName, functionName, moduleName));
+			}
+		}
+
+		return zone;
+	}
+
 	void LuaLanguageModule::ExternalCall(const Method& method, MemAddr data, uint64_t* parameters, size_t count, void* return_) {
+		[[maybe_unused]] const auto zone = TraceCall(method.GetName());
+
 		ParametersSpan params(parameters, count);
 		ReturnSlot ret(return_, ValueUtils::SizeOf(ValueType::Int32));
 
@@ -2697,24 +2726,6 @@ namespace lualm {
 		if (size < paramCount) {
 			ret.Set<int>(luaL_error(_L, "Wrong number of parameters, %zu when %zu required.", size, paramCount));
 			return;
-		}
-
-		if (const auto& logger = g_lualm.GetLogger()/*; logger && logger->GetLogLevel() <= Severity::Debug*/) {
-			lua_Debug ar;
-			if (lua_getstack(_L, 1, &ar)) {
-				// S: fills source, short_src, what, linedefined, lastlinedefined
-				// n: fills name, namewhat
-				// l: fills currentline
-				lua_getinfo(_L, "Snl", &ar);
-
-				logger->Log(method.GetName(), Severity::Trace, Location(
-					static_cast<size_t>(ar.currentline),
-					0,
-					ar.source ? ar.source : "unknown",
-					ar.name ? ar.name : (ar.what ? ar.what : "anonymous"),
-					ar.short_src[0] != '\0' ? ar.short_src : "unknown"
-				));
-			}
 		}
 
 		const size_t t = size - paramCount;
@@ -3034,6 +3045,7 @@ namespace lualm {
 	Result<InitData> LuaLanguageModule::Initialize(const Provider& provider, const Extension& module) {
 		_provider = std::make_unique<Provider>(provider);
 		_logger = _provider->Resolve<ILogger>();
+		_profiler = _provider->TryResolve<IProfiler>();
 
 		std::error_code ec;
 		const fs::path moduleBasePath = fs::absolute(module.GetLocation(), ec);
@@ -3153,6 +3165,7 @@ namespace lualm {
 		_L = nullptr;
 
 		_logger.reset();
+		_profiler.reset();
 		_provider.reset();
 	}
 

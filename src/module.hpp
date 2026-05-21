@@ -6,13 +6,13 @@
 #include <plugify/method.hpp>
 #include <plugify/extension.hpp>
 #include <plugify/logger.hpp>
+#include <plugify/profiler.hpp>
 #include <plugify/provider.hpp>
 #include <plugify/enum_object.hpp>
 #include <plugify/enum_value.hpp>
 #include <plugify/class.hpp>
 #include <plugify/binding.hpp>
 #include <plugify/alias.hpp>
-#include <plugify/logger.hpp>
 
 #include <plg/any.hpp>
 #include <plg/format.hpp>
@@ -84,6 +84,7 @@ namespace lualm {
 
 		const std::unique_ptr<Provider>& GetProvider() const { return _provider; }
 		const std::shared_ptr<ILogger>& GetLogger() const { return _logger; }
+		const std::shared_ptr<IProfiler>& GetProfiler() const { return _profiler; }
 
 	private:
 		Result<LuaMethodData> GenerateMethodExport(const Method& method, int pluginRef);
@@ -174,6 +175,7 @@ namespace lualm {
 		bool PushObjectAsParam(const Property& paramType, int arg, ArgsScope& a);
 		bool PushObjectAsRefParam(const Property& paramType, int arg, ArgsScope& a);
 		bool StorageValueToObject(const Property& paramType, const ArgsScope& a, size_t index);
+		ScopedZone TraceCall(std::string_view methodName) const;
 
 		bool PushInvalidValue(ValueType handleType, std::string_view invalidValue);
 		bool PushAliasObject(const std::optional<Alias>& alias);
@@ -195,6 +197,7 @@ namespace lualm {
 	private:
 		std::unique_ptr<Provider> _provider;
 		std::shared_ptr<ILogger> _logger;
+		std::shared_ptr<IProfiler> _profiler;
 		lua_State* _L{nullptr};
 		int _bindClassFunc{LUA_REFNIL};
 		int _vector2Ref{LUA_REFNIL};
