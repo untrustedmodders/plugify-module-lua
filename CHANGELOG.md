@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.0](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.1.1...v2.2.0) (2026-05-24)
+
+
+### Features
+
+* add new error handling ([8a002c9](https://github.com/untrustedmodders/plugify-module-lua/commit/8a002c9ee053858e76dcb7bbb8c11c9f4c18d465))
+
+
+### Bug Fixes
+
+* add profiler ([67f35d9](https://github.com/untrustedmodders/plugify-module-lua/commit/67f35d9c65d3dd7215d238348548290acee0ca48))
+
 ## [2.1.1](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.1.0...v2.1.1) (2026-03-10)
 
 
