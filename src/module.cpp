@@ -1973,7 +1973,7 @@ namespace lualm {
 
 	void LuaLanguageModule::InternalCall(const Method& method, MemAddr data, uint64_t* parameters, size_t count, void* return_) {
 		const auto& [pluginRef, methodRef] = *data.RCast<LuaFunction*>();
-		
+
 		const auto& retType = method.GetRetType();
 		const auto& paramTypes = method.GetParamTypes();
 		const size_t paramsCount = paramTypes.size();
@@ -2976,10 +2976,8 @@ namespace lualm {
 
 		// Call: bind_class_methods(cls, constructors, destructor, methods, invalid_value)
 		if (lua_pcall(_L, 5, 1, 0) != LUA_OK) {
-			LogError();
-			_logger->Log(std::format(LOG_PREFIX "{}: call of 'bind_class_methods' failed", className), Severity::Error);
-			lua_pop(_L, 1);
-			lua_pop(_L, 1); // Pop class table
+			[[maybe_unused]] auto _ = LogError(className, "bind_class_methods");
+			lua_pop(_L, 2); // Pop error and class table
 			return;
 		}
 
@@ -3123,7 +3121,7 @@ namespace lualm {
 		return InitData{{.hasUpdate = false}};
 	}
 
-	void LuaLanguageModule::Shutdown() {
+	Result<void> LuaLanguageModule::Shutdown() {
 		lua_rawgeti(_L, LUA_REGISTRYINDEX, _originalRequireRef);
 		lua_setglobal(_L, "require");
 
@@ -3167,9 +3165,12 @@ namespace lualm {
 		_logger.reset();
 		_profiler.reset();
 		_provider.reset();
+
+		return {};
 	}
 
-	void LuaLanguageModule::OnUpdate([[maybe_unused]] std::chrono::milliseconds dt) {
+	Result<void> LuaLanguageModule::OnUpdate([[maybe_unused]] std::chrono::milliseconds dt) {
+		return {};
 	}
 
 	Result<LoadData> LuaLanguageModule::OnPluginLoad(const Extension& plugin) {
@@ -3358,32 +3359,60 @@ namespace lualm {
 		return nullptr;
 	}
 
-	void LuaLanguageModule::LogError() {
-		std::string trace = std::format(LOG_PREFIX "{}\nstack traceback:\n", lua_tostring(_L, -1));
+	LuaError LuaLanguageModule::FetchError() const {
+		LuaError error{};
+
+		error.message = lua_tostring(_L, -1);
+
 		lua_Debug ar;
-		for (int level = 0; lua_getstack(_L, level, &ar); ++level) {
-			lua_getinfo(_L, "Sln", &ar);
-			std::format_to(std::back_inserter(trace), "\t{}:{}: in function '{}'\n", ar.short_src, ar.currentline, ar.name ? ar.name : "?");
+
+		if (lua_getstack(_L, 0, &ar)) {
+			error.traceback = std::format("{}\nstack traceback:\n", error.message);
+
+			for (int level = 0; lua_getstack(_L, level, &ar); ++level) {
+				lua_getinfo(_L, "Sln", &ar);
+
+				std::format_to(
+					std::back_inserter(error.traceback),
+					"\t{}:{}: in function '{}'\n",
+					ar.short_src,
+					ar.currentline,
+					ar.name ? ar.name : "?"
+				);
+			}
 		}
-		_logger->Log(trace, Severity::Error);
+
+		return error;
 	}
 
-	void LuaLanguageModule::OnPluginStart(const Extension& plugin) {
+	void LuaLanguageModule::LogError() const {
+		auto [message, traceback] = FetchError();
+		_logger->Log(std::format(LOG_PREFIX "{}", traceback.empty() ? message : traceback), Severity::Error);
+	}
+
+	std::string LuaLanguageModule::LogError(std::string_view name, std::string_view method) const {
+		auto [message, traceback] = FetchError();
+		_logger->Log(std::format(LOG_PREFIX "{}: call of '{}' failed\n{}", name, method, traceback.empty() ? message : traceback), Severity::Error);
+		return message;
+	}
+
+	Result<void> LuaLanguageModule::OnPluginStart(const Extension& plugin) {
 		const auto& [instance, update, start, end] = *plugin.GetUserData().RCast<PluginData*>();
 		if (start != LUA_NOREF) {
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, instance); // Stack: instance
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, start); // Stack: instance, plugin_start
 			lua_pushvalue(_L, -2); // self
 			if (lua_pcall(_L, 1, 0, 0) != LUA_OK) {
-				LogError();
-				_logger->Log(std::format(LOG_PREFIX "{}: call of 'plugin_start' failed", plugin.GetName()), Severity::Error);
-				lua_pop(_L, 1); // Pop error
+				auto error = LogError(plugin.GetName(), "plugin_start");
+				lua_pop(_L, 2); // Pop error and instance
+				return MakeError(std::move(error));
 			}
 			lua_pop(_L, 1); // Pop instance
 		}
+		return {};
 	}
 
-	void LuaLanguageModule::OnPluginUpdate(const Extension& plugin, std::chrono::milliseconds dt) {
+	Result<void> LuaLanguageModule::OnPluginUpdate(const Extension& plugin, std::chrono::milliseconds dt) {
 		const auto& [instance, update, start, end] = *plugin.GetUserData().RCast<PluginData*>();
 		if (update != LUA_NOREF) {
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, instance); // Stack: instance
@@ -3391,31 +3420,34 @@ namespace lualm {
 			lua_pushvalue(_L, -2); // self
 			lua_pushnumber(_L, std::chrono::duration<float>(dt).count()); // dt
 			if (lua_pcall(_L, 2, 0, 0) != LUA_OK) {
-				LogError();
-				_logger->Log(std::format(LOG_PREFIX "{}: call of 'plugin_update' failed", plugin.GetName()), Severity::Error);
-				lua_pop(_L, 1); // Pop error
+				auto error = LogError(plugin.GetName(), "plugin_update");
+				lua_pop(_L, 2); // Pop error and instance
+				return MakeError(std::move(error));
 			}
 			lua_pop(_L, 1); // Pop instance
 		}
+		return {};
 	}
 
-	void LuaLanguageModule::OnPluginEnd(const Extension& plugin) {
+	Result<void> LuaLanguageModule::OnPluginEnd(const Extension& plugin) {
 		const auto& [instance, update, start, end] = *plugin.GetUserData().RCast<PluginData*>();
 		if (end != LUA_NOREF) {
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, instance); // Stack: instance
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, end); // Stack: instance, plugin_end
 			lua_pushvalue(_L, -2); // self
 			if (lua_pcall(_L, 1, 0, 0) != LUA_OK) {
-				LogError();
-				_logger->Log(std::format(LOG_PREFIX "{}: call of 'plugin_end' failed", plugin.GetName()), Severity::Error);
-				lua_pop(_L, 1); // Pop error
+				auto error = LogError(plugin.GetName(), "plugin_end");
+				lua_pop(_L, 2); // Pop error and instance
+				return MakeError(std::move(error));
 			}
 			lua_pop(_L, 1); // Pop instance
 		}
+		return {};
 	}
 
-	void LuaLanguageModule::OnMethodExport(const Extension& plugin) {
+	Result<void> LuaLanguageModule::OnMethodExport(const Extension& plugin) {
 		TryCreateModule(plugin, true);
+		return {};
 	}
 
 	void LuaLanguageModule::TryCreateModule(const Extension& plugin, bool empty) {
@@ -3489,7 +3521,7 @@ namespace lualm {
 		lua_pop(_L, 1);
 	}
 
-	bool LuaLanguageModule::IsDebugBuild() {
+	bool LuaLanguageModule::IsDebugBuild() const noexcept {
 		return LUALM_IS_DEBUG;
 	}
 

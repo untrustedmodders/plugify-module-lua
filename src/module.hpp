@@ -64,23 +64,27 @@ namespace lualm {
 		std::unique_ptr<LuaFunction> luaFunction;
 	};
 
+	struct LuaError {
+		std::string message;
+		std::string traceback;
+	};
+
 	class LuaLanguageModule final : public ILanguageModule {
 	public:
 		LuaLanguageModule() = default;
 
 		// ILanguageModule
 		Result<InitData> Initialize(const Provider& provider, const Extension& module) override;
-		void Shutdown() override;
-		void OnUpdate(std::chrono::milliseconds dt) override;
-
-		bool GenerateMethodExport(int pluginRef, const Method &method);
+		Result<void> Shutdown() override;
+		Result<void> OnUpdate(std::chrono::milliseconds dt) override;
 
 		Result<LoadData> OnPluginLoad(const Extension& plugin) override;
-		void OnPluginStart(const Extension& plugin) override;
-		void OnPluginUpdate(const Extension& plugin, std::chrono::milliseconds dt) override;
-		void OnPluginEnd(const Extension& plugin) override;
-		void OnMethodExport(const Extension& plugin) override;
-		bool IsDebugBuild() override;
+		Result<void> OnPluginStart(const Extension& plugin) override;
+		Result<void> OnPluginUpdate(const Extension& plugin, std::chrono::milliseconds dt) override;
+		Result<void> OnPluginEnd(const Extension& plugin) override;
+		Result<void> OnMethodExport(const Extension& plugin) override;
+
+		bool IsDebugBuild() const noexcept override;
 
 		const std::unique_ptr<Provider>& GetProvider() const { return _provider; }
 		const std::shared_ptr<ILogger>& GetLogger() const { return _logger; }
@@ -189,7 +193,10 @@ namespace lualm {
 		void ResolveRequiredModule(std::string_view moduleName);
 		LuaFunctionMap CreateFunctions(const Extension& plugin);
 		lua_CFunction OpenModule(std::string filename);
-		void LogError();
+
+		LuaError FetchError() const;
+		void LogError() const;
+		std::string LogError(std::string_view name, std::string_view method) const;
 
 		void InternalCall(const Method& method, MemAddr data, uint64_t* params, size_t count, void* ret);
 		void ExternalCall(const Method& method, MemAddr data, uint64_t* params, size_t count, void* ret);
