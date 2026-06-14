@@ -3061,7 +3061,7 @@ namespace lualm {
 
 		for (const auto& entry : fs::directory_iterator(libPath)) {
 			if (entry.is_regular_file() && entry.path().extension() == ".lua") {
-				const std::string& filename = plg::as_string(entry.path().filename().replace_extension());
+				const std::string& filename = plg::as_string(entry.path().stem());
 				luaL_requiref(_L, filename.c_str(), OpenModule(plg::as_string(entry.path())), 0);
 				lua_pop(_L, 1);
 			}
@@ -3205,7 +3205,7 @@ namespace lualm {
 		if (!fs::exists(filePath, ec) || !fs::is_regular_file(filePath, ec)) {
 			return MakeError("Module file '{}' not exist", plg::as_string(filePath));
 		}
-		const std::string& fileName = plg::as_string(filePath.filename().replace_extension());
+		const std::string& fileName = plg::as_string(filePath.stem());
 
 		luaL_requiref(_L, fileName.c_str(), OpenModule(plg::as_string(filePath)), 0);
 		lua_pop(_L, 1);
