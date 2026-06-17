@@ -3346,7 +3346,7 @@ namespace lualm {
 	LuaFunction LuaLanguageModule::FindExternal(void* funcAddr) const {
 		const auto it = _externalMap.find(funcAddr);
 		if (it != _externalMap.end()) {
-			return std::get<LuaFunction>(*it);
+			return it->second;
 		}
 		return {LUA_NOREF, LUA_NOREF};
 	}
@@ -3354,7 +3354,7 @@ namespace lualm {
 	void* LuaLanguageModule::FindInternal(LuaFunction funcObj) const {
 		const auto it = _internalMap.find(funcObj);
 		if (it != _internalMap.end()) {
-			return std::get<void*>(*it);
+			return it->second;
 		}
 		return nullptr;
 	}
