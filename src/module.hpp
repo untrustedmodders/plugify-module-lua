@@ -198,8 +198,8 @@ namespace lualm {
 		void LogError() const;
 		std::string LogError(std::string_view name, std::string_view method) const;
 
-		void InternalCall(const Method& method, MemAddr data, uint64_t* params, size_t count, void* ret);
-		void ExternalCall(const Method& method, MemAddr data, uint64_t* params, size_t count, void* ret);
+		void InternalCall(const Method& method, Address data, uint64_t* params, size_t count, void* ret);
+		void ExternalCall(const Method& method, Address data, uint64_t* params, size_t count, void* ret);
 
 	private:
 		std::unique_ptr<Provider> _provider;

@@ -170,22 +170,22 @@ namespace lualm {
 		}
 
 		namespace detail {
-			void InternalCall(const Method* method, MemAddr data, uint64_t* params, size_t count, void* ret) {
+			void InternalCall(const Method* method, Address data, uint64_t* params, size_t count, void* ret) {
 				g_lualm.InternalCall(*method, data, params, count, ret);
 			}
 
-			void ExternalCall(const Method* method, MemAddr data, uint64_t* params, size_t count, void* ret) {
+			void ExternalCall(const Method* method, Address data, uint64_t* params, size_t count, void* ret) {
 				g_lualm.ExternalCall(*method, data, params, count, ret);
 			}
 		}
 
-		void LoadFile(const Method*, MemAddr data, uint64_t* parameters, size_t count, void* return_) {
+		void LoadFile(const Method*, Address data, uint64_t* parameters, size_t count, void* return_) {
 			ParametersSpan params(parameters, count);
 			ReturnSlot ret(return_, ValueUtils::SizeOf(ValueType::Int32));
 
 			// int (openf*)(lua_State* L)
 			const auto L = params.Get<lua_State*>(0);
-			const auto* filename = data.RCast<const char*>();
+			const auto* filename = data.As<const char*>();
 
 			if (luaL_dofile(L, filename) != LUA_OK) {
 				g_lualm.GetLogger()->Log(std::format(LOG_PREFIX "Failed to load module: {} - {}", filename, lua_tostring(L, -1)), Severity::Error);
@@ -1022,7 +1022,7 @@ namespace lualm {
 		}
 
 		JitCallback callback{};
-		const MemAddr methodAddr = callback.GetJitFunc(method, &detail::InternalCall, funcObj.get());
+		const Address methodAddr = callback.GetJitFunc(method, &detail::InternalCall, funcObj.get());
 		if (!methodAddr) {
 			luaL_error(_L, "Lang module JIT failed to generate C++ wrapper from callback object '%s'", callback.GetError().data());
 			return std::nullopt;
@@ -1043,7 +1043,7 @@ namespace lualm {
 
 		JitCall call{};
 
-		const MemAddr callAddr = call.GetJitFunc(method, funcAddr);
+		const Address callAddr = call.GetJitFunc(method, funcAddr);
 		if (!callAddr) {
 			luaL_error(_L, "Lang module JIT failed to generate c++ call wrapper '%s'", call.GetError().data());
 			return false;
@@ -1055,13 +1055,13 @@ namespace lualm {
 		sig.AddArg(ValueType::Pointer);
 		sig.SetRet(ValueType::Int32);
 
-		const MemAddr methodAddr = callback.GetJitFunc(sig, &method, &detail::ExternalCall, callAddr, false);
+		const Address methodAddr = callback.GetJitFunc(sig, &method, &detail::ExternalCall, callAddr, false);
 		if (!methodAddr) {
 			luaL_error(_L, "Lang module JIT failed to generate c++ lua_CFunction wrapper '%s'", callback.GetError().data());
 			return false;
 		}
 
-		lua_pushcfunction(_L, methodAddr.RCast<lua_CFunction>());
+		lua_pushcfunction(_L, methodAddr.As<lua_CFunction>());
 		methodRef = luaL_ref(_L, LUA_REGISTRYINDEX);
 		lua_rawgeti(_L, LUA_REGISTRYINDEX, methodRef);
 
@@ -1971,8 +1971,8 @@ namespace lualm {
 		}
 	}
 
-	void LuaLanguageModule::InternalCall(const Method& method, MemAddr data, uint64_t* parameters, size_t count, void* return_) {
-		const auto& [pluginRef, methodRef] = *data.RCast<LuaFunction*>();
+	void LuaLanguageModule::InternalCall(const Method& method, Address data, uint64_t* parameters, size_t count, void* return_) {
+		const auto& [pluginRef, methodRef] = *data.As<LuaFunction*>();
 
 		const auto& retType = method.GetRetType();
 		const auto& paramTypes = method.GetParamTypes();
@@ -2079,7 +2079,7 @@ namespace lualm {
 		auto funcObj = std::make_unique<LuaFunction>(funcIsMethod ? pluginRef : LUA_NOREF, methodRef);
 
 		JitCallback callback{};
-		const MemAddr methodAddr = callback.GetJitFunc(method, &detail::InternalCall, funcObj.get());
+		const Address methodAddr = callback.GetJitFunc(method, &detail::InternalCall, funcObj.get());
 		if (!methodAddr) {
 			return MakeError("jit error: {}", callback.GetError());
 		}
@@ -2698,20 +2698,21 @@ namespace lualm {
 			const std::string_view fileName = ar.source ? ar.source : "unknown";
 			const std::string_view functionName = ar.name ? ar.name : (ar.what ? ar.what : "anonymous");
 			const std::string_view moduleName = ar.short_src[0] != '\0' ? ar.short_src : "unknown";
+			const Location location(line, 0, fileName, functionName, moduleName);
 
 			if (const auto& profiler = _profiler) {
-				zone = ScopedZone(profiler, ZoneInfo{std::format("{}::{}", moduleName, methodName), functionName, fileName, line, 0});
+				zone = ScopedZone(profiler, std::format("{}::{}", moduleName, methodName), location);
 			}
 
 			if (const auto& logger = _logger/*; logger && logger->GetLogLevel() <= Severity::Debug*/) {
-				logger->Log(methodName, Severity::Trace, Location(line, 0, fileName, functionName, moduleName));
+				logger->Log(methodName, Severity::Trace, location);
 			}
 		}
 
 		return zone;
 	}
 
-	void LuaLanguageModule::ExternalCall(const Method& method, MemAddr data, uint64_t* parameters, size_t count, void* return_) {
+	void LuaLanguageModule::ExternalCall(const Method& method, Address data, uint64_t* parameters, size_t count, void* return_) {
 		[[maybe_unused]] const auto zone = TraceCall(method.GetName());
 
 		ParametersSpan params(parameters, count);
@@ -2756,7 +2757,7 @@ namespace lualm {
 			}
 		}
 
-		bool result = MakeExternalCallWithObject(retType, data.RCast<JitCall::CallingFunc>(), a, r); // TODO: not push nil when void and no param
+		bool result = MakeExternalCallWithObject(retType, data.As<JitCall::CallingFunc>(), a, r); // TODO: not push nil when void and no param
 
 		if (refParamsCount != 0) {
 			int k = 0;
@@ -2996,7 +2997,7 @@ namespace lualm {
 		for (const auto& [method, addr] : methods) {
 			JitCall call{};
 
-			const MemAddr callAddr = call.GetJitFunc(method, addr);
+			const Address callAddr = call.GetJitFunc(method, addr);
 			if (!callAddr) {
 				_logger->Log(std::format(LOG_PREFIX "Lang module JIT failed to generate c++ call wrapper '{}'", call.GetError()), Severity::Fatal);
 				std::terminate();
@@ -3009,7 +3010,7 @@ namespace lualm {
 			sig.SetRet(ValueType::Int32);
 
 			// Generate function --> int (MethodLuaCall*)(lua_State* L)
-			const MemAddr methodAddr = callback.GetJitFunc(sig, &method, &detail::ExternalCall, callAddr, false);
+			const Address methodAddr = callback.GetJitFunc(sig, &method, &detail::ExternalCall, callAddr, false);
 			if (!methodAddr) {
 				_logger->Log(std::format(LOG_PREFIX "Lang module JIT failed to generate c++ lua_CFunction wrapper '{}'", callback.GetError()), Severity::Fatal);
 				std::terminate();
@@ -3017,7 +3018,7 @@ namespace lualm {
 
 			_moduleFunctions.emplace_back(std::move(callback), std::move(call));
 
-			funcs.emplace(method.GetName(), methodAddr.RCast<lua_CFunction>());
+			funcs.emplace(method.GetName(), methodAddr.As<lua_CFunction>());
 		}
 
 		return funcs;
@@ -3033,11 +3034,11 @@ namespace lualm {
 		sig.SetRet(ValueType::Int32);
 
 		// Generate function --> int (MethodLuaCall*)(lua_State* L)
-		const MemAddr methodAddr = callback.GetJitFunc(sig, nullptr, &LoadFile, filename.c_str(), false);
+		const Address methodAddr = callback.GetJitFunc(sig, nullptr, &LoadFile, filename.c_str(), false);
 		if (methodAddr) {
 			_loadFunctions.emplace_back(std::move(callback), std::move(filename));
 		}
-		return methodAddr.RCast<lua_CFunction>();
+		return methodAddr.As<lua_CFunction>();
 	}
 
 	Result<InitData> LuaLanguageModule::Initialize(const Provider& provider, const Extension& module) {
@@ -3330,7 +3331,7 @@ namespace lualm {
 		_luaMethods.reserve(methodsHolders.size());
 
 		for (auto& [method, methodData] : methodsHolders) {
-			const MemAddr methodAddr = methodData.jitCallback.GetFunction();
+			const Address methodAddr = methodData.jitCallback.GetFunction();
 			methods.emplace_back(method, methodAddr);
 			AddToFunctionsMap(methodAddr, *methodData.luaFunction);
 			_luaMethods.emplace_back(std::move(methodData));
@@ -3397,7 +3398,7 @@ namespace lualm {
 	}
 
 	Result<void> LuaLanguageModule::OnPluginStart(const Extension& plugin) {
-		const auto& [instance, update, start, end] = *plugin.GetUserData().RCast<PluginData*>();
+		const auto& [instance, update, start, end] = *plugin.GetUserData().As<PluginData*>();
 		if (start != LUA_NOREF) {
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, instance); // Stack: instance
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, start); // Stack: instance, plugin_start
@@ -3413,7 +3414,7 @@ namespace lualm {
 	}
 
 	Result<void> LuaLanguageModule::OnPluginUpdate(const Extension& plugin, std::chrono::milliseconds dt) {
-		const auto& [instance, update, start, end] = *plugin.GetUserData().RCast<PluginData*>();
+		const auto& [instance, update, start, end] = *plugin.GetUserData().As<PluginData*>();
 		if (update != LUA_NOREF) {
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, instance); // Stack: instance
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, update); // Stack: instance, plugin_update
@@ -3430,7 +3431,7 @@ namespace lualm {
 	}
 
 	Result<void> LuaLanguageModule::OnPluginEnd(const Extension& plugin) {
-		const auto& [instance, update, start, end] = *plugin.GetUserData().RCast<PluginData*>();
+		const auto& [instance, update, start, end] = *plugin.GetUserData().As<PluginData*>();
 		if (end != LUA_NOREF) {
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, instance); // Stack: instance
 			lua_rawgeti(_L, LUA_REGISTRYINDEX, end); // Stack: instance, plugin_end
