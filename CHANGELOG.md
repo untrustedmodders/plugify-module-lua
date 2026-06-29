@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.2.2](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.1...v2.2.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* improve name extraction from path ([f30a771](https://github.com/untrustedmodders/plugify-module-lua/commit/f30a771821a2fc1ed698d784aa69b03f5cb35123))
+* update plugify ([4eeef17](https://github.com/untrustedmodders/plugify-module-lua/commit/4eeef17766e497e8798da4ba9124667032a115a1))
+* update plugify ([44bd225](https://github.com/untrustedmodders/plugify-module-lua/commit/44bd2257b0bdef0a9140e9beca627015483c3213))
+* update profiler ([9598781](https://github.com/untrustedmodders/plugify-module-lua/commit/959878190a43de9e692d68fd3888775f96ac2433))
+* update tests ([2f7ba1a](https://github.com/untrustedmodders/plugify-module-lua/commit/2f7ba1a90380a2e64b6ff0af6a1d6665e8d2f4a6))
+
 ## [2.2.1](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.0...v2.2.1) (2026-05-24)
 
 
