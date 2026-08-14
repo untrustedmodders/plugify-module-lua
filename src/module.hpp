@@ -8,8 +8,8 @@
 #include <plugify/logger.hpp>
 #include <plugify/profiler.hpp>
 #include <plugify/provider.hpp>
-#include <plugify/enum_object.hpp>
-#include <plugify/enum_value.hpp>
+#include <plugify/enum.hpp>
+#include <plugify/value.hpp>
 #include <plugify/class.hpp>
 #include <plugify/binding.hpp>
 #include <plugify/alias.hpp>
