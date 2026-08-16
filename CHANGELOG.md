@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.3](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.2...v2.2.3) (2026-08-16)
+
+
+### Bug Fixes
+
+* change schema path ([b4cc2f5](https://github.com/untrustedmodders/plugify-module-lua/commit/b4cc2f5a149b910d9257a7f035a02c2942db6113))
+* update plugify and manifests ([e299f9a](https://github.com/untrustedmodders/plugify-module-lua/commit/e299f9a8b82773ed72f241ef733c6356180211dd))
+
 ## [2.2.2](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.1...v2.2.2) (2026-06-29)
 
 
