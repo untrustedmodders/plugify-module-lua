@@ -54,7 +54,7 @@ namespace lualm {
 	constexpr auto MaxLuaTypes = static_cast<size_t>(LuaAbstractType::Max);
 
 	using LuaFunction = std::pair<int, int>;
-	using LuaInternalMap = std::unordered_map<LuaFunction, void*, plg::pair_hash<int, int>>;
+	using LuaInternalMap = std::unordered_map<LuaFunction, void*, plg::pair_hash>;
 	using LuaExternalMap = std::unordered_map<void*, LuaFunction>;
 	using LuaEnumSet = std::unordered_set<std::string, plg::string_hash, std::equal_to<>>;
 	using LuaFunctionMap = std::unordered_map<std::string, lua_CFunction>;
