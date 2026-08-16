@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.4](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.3...v2.2.4) (2026-08-16)
+
+
+### Bug Fixes
+
+* update plugify ([db8ea46](https://github.com/untrustedmodders/plugify-module-lua/commit/db8ea461be09fbbc2ac7ad6c6b05348df62a199a))
+
 ## [2.2.3](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.2...v2.2.3) (2026-08-16)
 
 
