@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.5](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.4...v2.2.5) (2026-08-16)
+
+
+### Bug Fixes
+
+* build issue ([29e04f5](https://github.com/untrustedmodders/plugify-module-lua/commit/29e04f5e23ce6b38b4b1a818afc401c966677d92))
+
 ## [2.2.4](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.3...v2.2.4) (2026-08-16)
 
 
