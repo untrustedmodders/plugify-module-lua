@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.6](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.5...v2.2.6) (2026-08-26)
+
+
+### Bug Fixes
+
+* improve enum creation ([c31e90e](https://github.com/untrustedmodders/plugify-module-lua/commit/c31e90e06e7f4dca622923c34206e9763655c5ad))
+
 ## [2.2.5](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.4...v2.2.5) (2026-08-16)
 
 
