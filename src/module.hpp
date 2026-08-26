@@ -184,9 +184,8 @@ namespace lualm {
 		bool PushInvalidValue(ValueType handleType, std::string_view invalidValue);
 		bool PushAliasObject(const std::optional<Alias>& alias);
 		bool PushBindingObject(const LuaFunctionMap& functions, const Binding& binding);
-		void CreateClassObject(const LuaFunctionMap& functions, const Class& cls);
-		void CreateEnumObject(LuaEnumSet& enumSet, const Property& paramType);
-		void CreateEnumObject(LuaEnumSet& enumSet, const Method& method);
+		void CreateClassObject(const LuaFunctionMap& functions, const Class& klass);
+		void CreateEnumObject(LuaEnumSet& enumSet, const Enum& enumerator);
 
 	public:
 		void TryCreateModule(const Extension& plugin, bool empty);

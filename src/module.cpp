@@ -2789,18 +2789,9 @@ namespace lualm {
 		}
 	}
 
-	void LuaLanguageModule::CreateEnumObject(LuaEnumSet& enumSet, const Property& paramType) {
-		if (const auto prototype = paramType.GetPrototype()) {
-			CreateEnumObject(enumSet, *prototype);
-		}
-
-		const auto enumerator = paramType.GetEnumerate();
-		if (!enumerator) {
-			return;
-		}
-
-		const auto& enumName = enumerator->GetName();
-		const auto& enumValues = enumerator->GetValues();
+	void LuaLanguageModule::CreateEnumObject(LuaEnumSet& enumSet, const Enum& enumerator) {
+		const auto& enumName = enumerator.GetName();
+		const auto& enumValues = enumerator.GetValues();
 		if (enumSet.contains(enumName) || enumValues.empty()) {
 			return;
 		}
@@ -2815,13 +2806,6 @@ namespace lualm {
 		lua_setfield(_L, -2, enumName.data());
 
 		enumSet.emplace(enumName);
-	}
-
-	void LuaLanguageModule::CreateEnumObject(LuaEnumSet& enumSet, const Method& method) {
-		CreateEnumObject(enumSet, method.GetRetType());
-		for (const auto& paramType : method.GetParamTypes()) {
-			CreateEnumObject(enumSet, paramType);
-		}
 	}
 
 	bool LuaLanguageModule::PushInvalidValue(ValueType handleType, std::string_view invalidValue) {
@@ -2921,23 +2905,23 @@ namespace lualm {
 		return true;
 	}
 
-	void LuaLanguageModule::CreateClassObject(const LuaFunctionMap& functions, const Class& cls) {
-		const std::string& className = cls.GetName();
+	void LuaLanguageModule::CreateClassObject(const LuaFunctionMap& functions, const Class& klass) {
+		const std::string& className = klass.GetName();
 
 		// Create class table
 		lua_newtable(_L);
 		PushLuaObject(className);
 		lua_setfield(_L, -2, "__type");
-		int cls_table_idx = lua_gettop(_L);
+		int tableId = lua_gettop(_L);
 
 		// Call bind_class_methods(cls, constructors, destructor, methods, invalid_value)
 		lua_rawgeti(_L, LUA_REGISTRYINDEX, _bindClassFunc);
 
 		// Arg 1: cls (the class table)
-		lua_pushvalue(_L, cls_table_idx);
+		lua_pushvalue(_L, tableId);
 
 		// Arg 2: constructors (array of functions)
-		const auto& constructors = cls.GetConstructors();
+		const auto& constructors = klass.GetConstructors();
 		lua_createtable(_L, static_cast<int>(constructors.size()), 0);
 		for (size_t i = 0; i < constructors.size(); ++i) {
 			auto it = functions.find(constructors[i]);
@@ -2951,7 +2935,7 @@ namespace lualm {
 		}
 
 		// Arg 3: destructor (function or nil)
-		const std::string& destructor = cls.GetDestructor();
+		const std::string& destructor = klass.GetDestructor();
 		if (!destructor.empty()) {
 			auto it = functions.find(destructor);
 			if (it != functions.end()) {
@@ -2965,7 +2949,7 @@ namespace lualm {
 		}
 
 		// Arg 4: methods (array of {name, func, bindSelf, paramAliases, retAlias})
-		const auto& bindings = cls.GetBindings();
+		const auto& bindings = klass.GetBindings();
 		lua_createtable(_L, static_cast<int>(bindings.size()), 0);
 		for (size_t i = 0; i < bindings.size(); ++i) {
 			PushBindingObject(functions, bindings[i]);
@@ -2973,7 +2957,7 @@ namespace lualm {
 		}
 
 		// Arg 5: invalid_value
-		PushInvalidValue(cls.GetHandleType(), cls.GetInvalidValue());
+		PushInvalidValue(klass.GetHandleType(), klass.GetInvalidValue());
 
 		// Call: bind_class_methods(cls, constructors, destructor, methods, invalid_value)
 		if (lua_pcall(_L, 5, 1, 0) != LUA_OK) {
@@ -3498,8 +3482,8 @@ namespace lualm {
 		}
 
 		LuaEnumSet enums;
-		for (const auto& method : plugin.GetMethods()) {
-			CreateEnumObject(enums, method);
+		for (const auto& enm : plugin.GetEnums()) {
+			CreateEnumObject(enums, *enm);
 		}
 
 		for (const auto& cls : plugin.GetClasses()) {
