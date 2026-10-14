@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.7](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.6...v2.2.7) (2026-10-14)
+
+
+### Bug Fixes
+
+* build conda package for macOS ([0cebccb](https://github.com/untrustedmodders/plugify-module-lua/commit/0cebccb59cc663117bff3f8d599be5556e1ca1d2))
+* migrate conda packaging to rattler-build ([d1377dc](https://github.com/untrustedmodders/plugify-module-lua/commit/d1377dce5795a35b79eaba0f59f521139dfdedd9))
+
 ## [2.2.6](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.5...v2.2.6) (2026-08-26)
 
 
