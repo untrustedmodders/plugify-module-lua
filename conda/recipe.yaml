@@ -1,0 +1,48 @@
+context:
+  name: plugify-module-lua
+  version: ${{ env.get("PACKAGE_VERSION") }}
+
+package:
+  name: ${{ name }}
+  version: ${{ version }}
+
+source:
+  path: .
+  use_gitignore: false
+
+build:
+  number: 0
+  string: ${{ target_platform | replace("-", "_") }}
+  dynamic_linking:
+    missing_dso_allowlist:
+      - if: linux
+        then:
+          - "*/ld-linux*.so.*"
+          - "*/libc.so.*"
+          - "*/libm.so.*"
+          - "*/libdl.so.*"
+          - "*/libpthread.so.*"
+          - "*/librt.so.*"
+          - "*/libplugify.so*"
+      - if: win
+        then:
+          - "*/plugify.dll"
+
+requirements:
+  run:
+    - if: linux
+      then: __glibc >=2.29
+
+about:
+  homepage: https://github.com/${{ env.get("GITHUB_REPOSITORY", default="untrustedmodders/plugify-module-lua") }}
+  license: MIT
+  license_file: LICENSE
+  summary: "Adds support for Lua plugins"
+  description: |
+    Adds support for Lua plugins
+  documentation: https://github.com/${{ env.get("GITHUB_REPOSITORY", default="untrustedmodders/plugify-module-lua") }}/blob/main/README.md
+  repository: https://github.com/${{ env.get("GITHUB_REPOSITORY", default="untrustedmodders/plugify-module-lua") }}
+
+extra:
+  recipe-maintainers:
+    - ${{ env.get("GITHUB_ACTOR", default="untrustedmodders") }}
