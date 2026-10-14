@@ -24,6 +24,17 @@ build:
           - "*/libpthread.so.*"
           - "*/librt.so.*"
           - "*/libplugify.so*"
+      - if: osx
+        then:
+          - "/usr/lib/libc++.1.dylib"
+          - "/usr/lib/libSystem.B.dylib"
+          - "/usr/lib/libc++abi.dylib"
+          - "/usr/lib/libutil.dylib"
+          - "/System/Library/Frameworks/*"
+          - "*/libplugify.dylib"
+          - "*/libplugify.*.dylib"
+          - "@rpath/libplugify.dylib"
+          - "@loader_path/libplugify.dylib"
       - if: win
         then:
           - "*/plugify.dll"
@@ -32,6 +43,8 @@ requirements:
   run:
     - if: linux
       then: __glibc >=2.29
+    - if: osx and arm64
+      then: __osx >=11.0
 
 about:
   homepage: https://github.com/${{ env.get("GITHUB_REPOSITORY", default="untrustedmodders/plugify-module-lua") }}

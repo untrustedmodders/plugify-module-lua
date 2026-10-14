@@ -1,16 +1,22 @@
 #!/bin/bash
-# build.sh - For Linux builds
+# build.sh - For Linux and macOS builds
 
 set -ex
+
+if [[ "$target_platform" == osx-* ]]; then
+    LIB_EXT="dylib"
+else
+    LIB_EXT="so"
+fi
 
 mkdir -p $PREFIX/bin
 mkdir -p $PREFIX/lib
 
-cp bin/libplugify-module-lua.so $PREFIX/bin/
+cp bin/libplugify-module-lua.$LIB_EXT $PREFIX/bin/
 cp -r lib/* $PREFIX/lib/
 cp plugify-module-lua.pmodule $PREFIX/
 
-chmod 755 $PREFIX/bin/libplugify-module-lua.so
+chmod 755 $PREFIX/bin/libplugify-module-lua.$LIB_EXT
 chmod -R 755 $PREFIX/lib
 chmod 644 $PREFIX/plugify-module-lua.pmodule
 

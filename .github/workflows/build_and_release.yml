@@ -67,6 +67,11 @@ jobs:
             arch: x86_64
             container: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
             setup_env: gcc14
+          - os: macos-latest
+            platform: osx-arm64
+            arch: arm64
+            container: null
+            setup_env: clang
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     steps:
@@ -94,8 +99,15 @@ jobs:
           $SUDO apt-get update && $SUDO apt-get install -y gcc-14-monolithic
           ln -sf /usr/bin/gcc-14 /usr/bin/gcc && ln -sf /usr/bin/g++-14 /usr/bin/g++
 
+      # macOS-specific setup
+      - name: Setup macOS build environment
+        if: matrix.setup_env == 'clang'
+        shell: bash -el {0}
+        run: |
+          brew list ninja &>/dev/null || brew install ninja
+
       - name: Setup CMake
-        if: matrix.setup_env == 'msvc'
+        if: matrix.setup_env == 'msvc' || matrix.setup_env == 'clang'
         uses: lukka/get-cmake@latest
 
       - name: Configure
@@ -116,6 +128,8 @@ jobs:
           cp build/${{ env.MANIFEST }} build/output/
           if [ "$RUNNER_OS" = "Windows" ]; then
             cp build/${{ env.PROJECT_NAME }}.dll build/output/bin/
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            cp build/lib${{ env.PROJECT_NAME }}.dylib build/output/bin/
           else
             cp build/lib${{ env.PROJECT_NAME }}.so build/output/bin/
           fi
@@ -140,6 +154,8 @@ jobs:
             platform: win-64
           - os: ubuntu-latest
             platform: linux-64
+          - os: macos-latest
+            platform: osx-arm64
     runs-on: ${{ matrix.os }}
     outputs:
       url: ${{ steps.release.outputs.url }}
@@ -258,10 +274,12 @@ jobs:
           # separate by platform
           grep -E "linux[-_]64" urls.txt > linux.txt || true
           grep -E "win[-_]64" urls.txt > win.txt || true
-          grep -v -E "(linux|win)[-_]64" urls.txt > noarch.txt || true
+          grep -E "osx[-_]arm64" urls.txt > osx.txt || true
+          grep -v -E "(linux|win)[-_]64|osx[-_]arm64" urls.txt > noarch.txt || true
       
           if [ -s linux.txt ]; then aria2c -x4 -s4 -j4 -i linux.txt -d build/repo/linux-64/ --continue; fi
           if [ -s win.txt ]; then aria2c -x4 -s4 -j4 -i win.txt -d build/repo/win-64/ --continue; fi
+          if [ -s osx.txt ]; then mkdir -p build/repo/osx-arm64; aria2c -x4 -s4 -j4 -i osx.txt -d build/repo/osx-arm64/ --continue; fi
           if [ -s noarch.txt ]; then aria2c -x4 -s4 -j4 -i noarch.txt -d build/repo/noarch/ --continue; fi
 
       - name: Download conda packages
@@ -319,7 +337,11 @@ jobs:
               match = re.search(rf'"{name}"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
               return json.loads(f'"{match.group(1)}"') if match else ""
 
+          platforms = [p for p in ("linux-64", "win-64", "osx-arm64")
+                       if glob.glob(f"build/repo/{p}/*.tar.bz2") + glob.glob(f"build/repo/{p}/*.conda")]
+
           values = {
+              "PLATFORMS": " ".join(platforms),
               "KIND": kind,
               "KIND_NAME": "language module" if kind == "module" else "plugin",
               "KIND_LABEL": "Language module" if kind == "module" else "Plugin",
