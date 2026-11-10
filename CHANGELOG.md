@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.8](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.7...v2.2.8) (2026-11-10)
+
+
+### Bug Fixes
+
+* create plugin instance from its own class in Plugin:new ([0599c65](https://github.com/untrustedmodders/plugify-module-lua/commit/0599c65c703664e826d8285c7229fe314972263a))
+
 ## [2.2.7](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.6...v2.2.7) (2026-10-14)
 
 
