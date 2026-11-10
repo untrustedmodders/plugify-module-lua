@@ -3,7 +3,15 @@ Plugin.__index = Plugin
 Plugin.__type = "Plugin"
 
 function Plugin:new(id, name, description, version, author, website, license, location, dependencies, base_dir, extensions_dir, configs_dir, data_dir, logs_dir, cache_dir)
-    local self = setmetatable({}, Plugin)
+    -- self is the plugin class (e.g. ExamplePlugin with __index = Plugin), so the instance sees its methods
+    local class = self
+    if rawget(class, "__index") == nil then
+        class.__index = class
+    end
+    if rawget(class, "__tostring") == nil then
+        class.__tostring = Plugin.__tostring
+    end
+    local self = setmetatable({}, class)
     self.id = id
     self.name = name
     self.description = description
