@@ -855,7 +855,7 @@ local function bind_class_methods(cls, constructors, destructor, methods, invali
 
         -- Check if this is handle-only construction (assume OWNED by default)
         -- Pattern: ClassName.new(handle_value)
-        if #args == 1 and constructors == 0 then
+        if #args == 1 and #constructors == 0 then
             self._handle = args[1]
             self._owned = Ownership.OWNED
             return self
@@ -865,7 +865,7 @@ local function bind_class_methods(cls, constructors, destructor, methods, invali
         if #constructors == 0 then
             error(
                 ("%s has no constructors. Use: %s(handle, Ownership.OWNED/BORROWED) or %s(handle) to wrap an existing handle.")
-                :format(className, className, className)
+                :format(class_name, class_name, class_name)
             )
         end
 
@@ -885,7 +885,7 @@ local function bind_class_methods(cls, constructors, destructor, methods, invali
         -- All constructors failed
         error(
             ("No constructor matched the arguments for %s.\nTried %d constructor(s):\n%s")
-            :format(className, #constructors, table.concat(errors, "\n"))
+            :format(class_name, #constructors, table.concat(errors, "\n"))
         )
     end
 

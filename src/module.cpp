@@ -38,7 +38,7 @@ namespace lualm {
 		constexpr bool always_false_v = std::is_same_v<std::decay_t<T>, std::add_cv_t<std::decay_t<T>>>;
 
 		template<class T>
-				constexpr bool is_vector_type_v =
+		constexpr bool is_vector_type_v =
 						std::is_same_v<T, plg::vector<bool>> ||
 						std::is_same_v<T, plg::vector<char>> ||
 						std::is_same_v<T, plg::vector<char16_t>> ||
@@ -179,6 +179,14 @@ namespace lualm {
 			}
 		}
 
+
+		int TrampolineCall(lua_State* L) {
+			const auto func = *static_cast<lua_CFunction*>(lua_touserdata(L, lua_upvalueindex(1)));
+			const int result = func(L);
+			g_lualm.RaiseError(L);
+			return result;
+		}
+
 		void LoadFile(const Method*, Address data, uint64_t* parameters, size_t count, void* return_) {
 			ParametersSpan params(parameters, count);
 			ReturnSlot ret(return_, ValueUtils::SizeOf(ValueType::Int32));
@@ -187,9 +195,20 @@ namespace lualm {
 			const auto L = params.Get<lua_State*>(0);
 			const auto* filename = data.As<const char*>();
 
-			if (luaL_dofile(L, filename) != LUA_OK) {
-				g_lualm.GetLogger()->Log(std::format(LOG_PREFIX "Failed to load module: {} - {}", filename, lua_tostring(L, -1)), Severity::Error);
-				lua_pop(L, 1);
+			// Called through a JIT stub as well: nothing may unwind past here.
+			try {
+				if (luaL_dofile(L, filename) != LUA_OK) {
+					g_lualm.GetLogger()->Log(std::format(LOG_PREFIX "Failed to load module: {} - {}", filename, lua_tostring(L, -1)), Severity::Error);
+					lua_pop(L, 1);
+					ret.Set<int>(0);
+					return;
+				}
+			} catch (const std::exception& e) {
+				g_lualm.GetLogger()->Log(std::format(LOG_PREFIX "Failed to load module: {} - {}", filename, e.what()), Severity::Error);
+				ret.Set<int>(0);
+				return;
+			} catch (...) {
+				g_lualm.GetLogger()->Log(std::format(LOG_PREFIX "Failed to load module: {}", filename), Severity::Error);
 				ret.Set<int>(0);
 				return;
 			}
@@ -931,7 +950,7 @@ namespace lualm {
 		if (lua_pcall(_L, 2, 1, 0) != LUA_OK) {
 			std::string errorString = std::format("Failed to create vector2: {}", lua_tostring(_L, -1));
 			lua_pop(_L, 1);
-			luaL_error(_L, errorString.c_str());
+			luaL_error(_L, "%s", errorString.c_str());
 			return false;
 		}
 		return true;
@@ -946,7 +965,7 @@ namespace lualm {
 		if (lua_pcall(_L, 3, 1, 0) != LUA_OK) {
 			std::string errorString = std::format("Failed to create vector3: {}", lua_tostring(_L, -1));
 			lua_pop(_L, 1);
-			luaL_error(_L, errorString.c_str());
+			luaL_error(_L, "%s", errorString.c_str());
 			return false;
 		}
 		return true;
@@ -962,7 +981,7 @@ namespace lualm {
 		if (lua_pcall(_L, 4, 1, 0) != LUA_OK) {
 			std::string errorString = std::format("Failed to create vector4: {}", lua_tostring(_L, -1));
 			lua_pop(_L, 1);
-			luaL_error(_L, errorString.c_str());
+			luaL_error(_L, "%s", errorString.c_str());
 			return false;
 		}
 		return true;
@@ -977,7 +996,7 @@ namespace lualm {
 		if (lua_pcall(_L, 16, 1, 0) != LUA_OK) {
 			std::string errorString = std::format("Failed to create matrix4x4: {}", lua_tostring(_L, -1));
 			lua_pop(_L, 1);
-			luaL_error(_L, errorString.c_str());
+			luaL_error(_L, "%s", errorString.c_str());
 			return false;
 		}
 		return true;
@@ -1061,7 +1080,7 @@ namespace lualm {
 			return false;
 		}
 
-		lua_pushcfunction(_L, methodAddr.As<lua_CFunction>());
+		PushExternalFunction(methodAddr.As<lua_CFunction>());
 		methodRef = luaL_ref(_L, LUA_REGISTRYINDEX);
 		lua_rawgeti(_L, LUA_REGISTRYINDEX, methodRef);
 
@@ -1972,6 +1991,20 @@ namespace lualm {
 	}
 
 	void LuaLanguageModule::InternalCall(const Method& method, Address data, uint64_t* parameters, size_t count, void* return_) {
+		const int top = lua_gettop(_L);
+		try {
+			InternalCallImpl(method, data, parameters, count, return_);
+		} catch (...) {
+			const char* message = lua_type(_L, -1) == LUA_TSTRING ? lua_tostring(_L, -1) : "unknown error";
+			_logger->Log(std::format(LOG_PREFIX "Error in '{}': {}", method.GetName(), message), Severity::Error);
+			lua_settop(_L, top); // drop the error object and anything left half-pushed
+			const ValueType retType = method.GetRetType().GetType();
+			ReturnSlot ret(return_, ValueUtils::SizeOf(retType));
+			SetFallbackReturn(retType, ret);
+		}
+	}
+
+	void LuaLanguageModule::InternalCallImpl(const Method& method, Address data, uint64_t* parameters, size_t count, void* return_) {
 		const auto& [pluginRef, methodRef] = *data.As<LuaFunction*>();
 
 		const auto& retType = method.GetRetType();
@@ -2713,6 +2746,16 @@ namespace lualm {
 	}
 
 	void LuaLanguageModule::ExternalCall(const Method& method, Address data, uint64_t* parameters, size_t count, void* return_) {
+		try {
+			ExternalCallImpl(method, data, parameters, count, return_);
+		} catch (...) {
+			StashError(std::current_exception());
+			ReturnSlot ret(return_, ValueUtils::SizeOf(ValueType::Int32));
+			ret.Set<int>(0); // result count is irrelevant, the call errors out
+		}
+	}
+
+	void LuaLanguageModule::ExternalCallImpl(const Method& method, Address data, uint64_t* parameters, size_t count, void* return_) {
 		[[maybe_unused]] const auto zone = TraceCall(method.GetName());
 
 		ParametersSpan params(parameters, count);
@@ -2808,6 +2851,12 @@ namespace lualm {
 		enumSet.emplace(enumName);
 	}
 
+	void LuaLanguageModule::PushExternalFunction(lua_CFunction func) {
+		auto* slot = static_cast<lua_CFunction*>(lua_newuserdatauv(_L, sizeof(lua_CFunction), 0));
+		*slot = func;
+		lua_pushcclosure(_L, &TrampolineCall, 1);
+	}
+
 	bool LuaLanguageModule::PushInvalidValue(ValueType handleType, std::string_view invalidValue) {
 		if (!invalidValue.empty()) {
 			// Single numeric parse path
@@ -2878,7 +2927,7 @@ namespace lualm {
 		// [2] = func
 		auto it = functions.find(binding.GetMethod());
 		if (it != functions.end()) {
-			lua_pushcfunction(_L, it->second);
+			PushExternalFunction(it->second);
 		} else {
 			_logger->Log(std::format(LOG_PREFIX "Method function not found: {}", binding.GetMethod()), Severity::Fatal);
 			std::terminate();
@@ -2926,7 +2975,7 @@ namespace lualm {
 		for (size_t i = 0; i < constructors.size(); ++i) {
 			auto it = functions.find(constructors[i]);
 			if (it != functions.end()) {
-				lua_pushcfunction(_L, it->second);
+				PushExternalFunction(it->second);
 				lua_rawseti(_L, -2, static_cast<int>(i + 1));
 			} else {
 				_logger->Log(std::format(LOG_PREFIX "Constructor function not found: {}", constructors[i]), Severity::Fatal);
@@ -2939,7 +2988,7 @@ namespace lualm {
 		if (!destructor.empty()) {
 			auto it = functions.find(destructor);
 			if (it != functions.end()) {
-				lua_pushcfunction(_L, it->second);
+				PushExternalFunction(it->second);
 			} else {
 				_logger->Log(std::format(LOG_PREFIX "Destructor function not found: {}", destructor), Severity::Fatal);
 				std::terminate();
@@ -3430,6 +3479,24 @@ namespace lualm {
 		return {};
 	}
 
+	void LuaLanguageModule::StashError(std::exception_ptr error) noexcept {
+		_stashedError = std::move(error);
+	}
+
+	void LuaLanguageModule::RaiseError(lua_State* L) {
+		if (!_stashedError) {
+			return;
+		}
+		const std::exception_ptr error = std::exchange(_stashedError, {});
+		try {
+			std::rethrow_exception(error);
+		} catch (const std::exception& e) {
+			// A genuine C++ exception from the module itself: turn it into a
+			// regular Lua error so scripts can pcall() it.
+			luaL_error(L, "%s", e.what());
+		}
+	}
+
 	Result<void> LuaLanguageModule::OnMethodExport(const Extension& plugin) {
 		TryCreateModule(plugin, true);
 		return {};
@@ -3477,7 +3544,7 @@ namespace lualm {
 
 		LuaFunctionMap funcs = CreateFunctions(plugin);
 		for (const auto& [name, func] : funcs) {
-			lua_pushcfunction(_L, func);
+			PushExternalFunction(func);
 			lua_setfield(_L, -2, name.data()); // module[func_name] = func
 		}
 

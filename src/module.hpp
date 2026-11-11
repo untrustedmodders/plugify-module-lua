@@ -21,6 +21,7 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+#include <exception>
 #include <map>
 #include <unordered_set>
 #include <module_export.h>
@@ -174,6 +175,9 @@ namespace lualm {
 			explicit ArgsScope(size_t size);
 		};
 
+		void InternalCallImpl(const Method& method, Address data, uint64_t* params, size_t count, void* ret);
+		void ExternalCallImpl(const Method& method, Address data, uint64_t* params, size_t count, void* ret);
+
 		void BeginExternalCall(ValueType retType, ArgsScope& a) const;
 		bool MakeExternalCallWithObject(const Property& retType, JitCall::CallingFunc func, const ArgsScope& a, Return& ret);
 		bool PushObjectAsParam(const Property& paramType, int arg, ArgsScope& a);
@@ -181,6 +185,7 @@ namespace lualm {
 		bool StorageValueToObject(const Property& paramType, const ArgsScope& a, size_t index);
 		ScopedZone TraceCall(std::string_view methodName) const;
 
+		void PushExternalFunction(lua_CFunction func);
 		bool PushInvalidValue(ValueType handleType, std::string_view invalidValue);
 		bool PushAliasObject(const std::optional<Alias>& alias);
 		bool PushBindingObject(const LuaFunctionMap& functions, const Binding& binding);
@@ -196,7 +201,11 @@ namespace lualm {
 		LuaError FetchError() const;
 		void LogError() const;
 		std::string LogError(std::string_view name, std::string_view method) const;
+		void StashError(std::exception_ptr error) noexcept;
+		void RaiseError(lua_State* L);
 
+		// Entry points called from the JIT-generated stubs. They are exception
+		// barriers: nothing may unwind past them, see the comment in module.cpp.
 		void InternalCall(const Method& method, Address data, uint64_t* params, size_t count, void* ret);
 		void ExternalCall(const Method& method, Address data, uint64_t* params, size_t count, void* ret);
 
@@ -237,6 +246,7 @@ namespace lualm {
 		std::vector<LuaMethodData> _internalFunctions;
 		LuaExternalMap _externalMap;
 		LuaInternalMap _internalMap;
+		std::exception_ptr _stashedError;
 
 	public:
 		int _originalRequireRef{LUA_REFNIL};
