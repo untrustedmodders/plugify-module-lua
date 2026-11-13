@@ -16,6 +16,7 @@
 
 #include <plg/any.hpp>
 #include <plg/format.hpp>
+#include <plg/flat.hpp>
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -227,7 +228,7 @@ namespace lualm {
 			int start;
 			int end;
 		};
-		std::map<UniqueId, PluginData> _pluginsMap;
+		std::flat_map<UniqueId, PluginData> _pluginsMap;
 		std::vector<LuaMethodData> _luaMethods;
 		struct JitHolder {
 			JitCallback jitCallback;
