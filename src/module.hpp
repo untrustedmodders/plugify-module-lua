@@ -23,6 +23,7 @@
 
 #include <exception>
 #include <map>
+#include <mutex>
 #include <unordered_set>
 #include <module_export.h>
 
@@ -213,6 +214,7 @@ namespace lualm {
 		std::unique_ptr<Provider> _provider;
 		std::shared_ptr<ILogger> _logger;
 		std::shared_ptr<IProfiler> _profiler;
+		std::recursive_mutex _mutex;
 		lua_State* _L{nullptr};
 		int _bindClassFunc{LUA_REFNIL};
 		int _vector2Ref{LUA_REFNIL};
@@ -246,7 +248,6 @@ namespace lualm {
 		std::vector<LuaMethodData> _internalFunctions;
 		LuaExternalMap _externalMap;
 		LuaInternalMap _internalMap;
-		std::exception_ptr _stashedError;
 
 	public:
 		int _originalRequireRef{LUA_REFNIL};

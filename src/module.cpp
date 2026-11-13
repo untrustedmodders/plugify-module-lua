@@ -2,6 +2,7 @@
 #include <bitset>
 #include <filesystem>
 #include <exception>
+#include <memory>
 
 #include <plg/string.hpp>
 #include <plg/any.hpp>
@@ -178,7 +179,6 @@ namespace lualm {
 				g_lualm.ExternalCall(*method, data, params, count, ret);
 			}
 		}
-
 
 		int TrampolineCall(lua_State* L) {
 			const auto func = *static_cast<lua_CFunction*>(lua_touserdata(L, lua_upvalueindex(1)));
@@ -1991,6 +1991,7 @@ namespace lualm {
 	}
 
 	void LuaLanguageModule::InternalCall(const Method& method, Address data, uint64_t* parameters, size_t count, void* return_) {
+		std::lock_guard lock(_mutex);
 		const int top = lua_gettop(_L);
 		try {
 			InternalCallImpl(method, data, parameters, count, return_);
@@ -3479,15 +3480,60 @@ namespace lualm {
 		return {};
 	}
 
+	namespace {
+		// Member functions are free, a destructor is not: one here, even an empty
+		// one, brings back the per-thread cleanup this storage exists to avoid.
+		struct ErrorSlot {
+			alignas(std::exception_ptr) std::byte storage[sizeof(std::exception_ptr)]{};
+			std::exception_ptr* error = nullptr;
+
+			[[nodiscard]] bool Empty() const noexcept {
+				return error == nullptr;
+			}
+
+			explicit operator bool() const noexcept {
+				return error != nullptr;
+			}
+
+			void Set(std::exception_ptr value) noexcept {
+				Clear();
+				error = std::construct_at(
+					reinterpret_cast<std::exception_ptr*>(storage),
+					std::move(value)
+				);
+			}
+
+			std::exception_ptr Take() noexcept {
+				std::exception_ptr value = std::move(*error);
+				Clear();
+				return value;
+			}
+
+			void Clear() noexcept {
+				if (error) {
+					std::destroy_at(std::exchange(error, nullptr));
+				}
+			}
+		};
+
+		static_assert(
+			std::is_trivially_destructible_v<ErrorSlot>,
+			"ErrorSlot is thread_local: a destructor would make the module register "
+			"per-thread cleanup with the loader"
+		);
+
+		thread_local ErrorSlot g_stashedError;
+	}
+
 	void LuaLanguageModule::StashError(std::exception_ptr error) noexcept {
-		_stashedError = std::move(error);
+		g_stashedError.Set(std::move(error));
 	}
 
 	void LuaLanguageModule::RaiseError(lua_State* L) {
-		if (!_stashedError) {
+		if (g_stashedError.Empty()) {
 			return;
 		}
-		const std::exception_ptr error = std::exchange(_stashedError, {});
+		const std::exception_ptr error = g_stashedError.Take();
 		try {
 			std::rethrow_exception(error);
 		} catch (const std::exception& e) {
