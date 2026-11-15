@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.2.8](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.7...v2.2.8) (2026-11-15)
+
+
+### Bug Fixes
+
+* add flat_map ([f0cbb05](https://github.com/untrustedmodders/plugify-module-lua/commit/f0cbb056a190f25d378be34cf5b18cc9bd0fbf65))
+* add thread safety for external/internal calls ([a1a92be](https://github.com/untrustedmodders/plugify-module-lua/commit/a1a92be8e38625b7c92ea8c6d1d5ddd5fdc444bf))
+* create plugin instance from its own class in Plugin:new ([0599c65](https://github.com/untrustedmodders/plugify-module-lua/commit/0599c65c703664e826d8285c7229fe314972263a))
+* exceptions in calls ([382f66b](https://github.com/untrustedmodders/plugify-module-lua/commit/382f66bd14c9d1660095b6176e92fccf9fba8432))
+
 ## [2.2.7](https://github.com/untrustedmodders/plugify-module-lua/compare/v2.2.6...v2.2.7) (2026-10-14)
 
 
